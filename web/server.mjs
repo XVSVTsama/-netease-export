@@ -8,6 +8,7 @@ import QRCode from 'qrcode';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
 const PORT = Number(process.env.PORT || 8789);
+const HOST = process.env.HOST || '127.0.0.1';   // 默认只监听本机；需要局域网访问时设 HOST=0.0.0.0
 // 代码目录（只读，随程序走）与数据目录（可写，便携版在 exe 同级）分开
 const CODE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = path.resolve(process.env.NC_ROOT || process.cwd());
@@ -716,4 +717,4 @@ const server = http.createServer(async (req, res) => {
   return sendFile(path.join(PUBLIC, path.basename(p)));
 });
 
-server.listen(PORT, '0.0.0.0', () => console.log('web panel on ' + PORT));
+server.listen(PORT, HOST, () => console.log(`web panel on ${HOST}:${PORT}`));

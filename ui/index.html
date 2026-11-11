@@ -50,6 +50,17 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .stat .k{font-size:12px;color:var(--muted)}
 .stat .v{font-size:20px;font-weight:700;margin-top:2px}
 </style>
+<script>
+/* 兜底：脚本解析或运行出错时，把错误显示在页面顶部，避免“点了没反应却看不到原因” */
+window.addEventListener('error', e => {
+  const el = document.getElementById('sub');
+  if (el) el.textContent = '界面脚本出错：' + (e.message || '未知错误');
+});
+window.addEventListener('unhandledrejection', e => {
+  const el = document.getElementById('sub');
+  if (el) el.textContent = '请求失败：' + ((e.reason && (e.reason.message || e.reason)) || '未知错误');
+});
+</script>
 </head>
 <body>
 <h1>网易云导出</h1>
@@ -218,11 +229,11 @@ const INVISIBLE = cp => cp < 0x20 || cp === 0x7f || (cp >= 0x200b && cp <= 0x200
 function disp(s) {
   const t = String(s ?? '');
   if (DISP === 'raw') return t;
-  if (DISP === 'mark') return t.replace(/[\\u0000-\\u001f\\u007f\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069\\ufeff\\u00ad]/g,
+  if (DISP === 'mark') return t.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff\u00ad]/g,
     c => '⟨U+' + c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0') + '⟩');
-  if (DISP === 'esc') return [...t].map(c => { const cp = c.codePointAt(0); return INVISIBLE(cp) ? '\\\\u' + cp.toString(16).toUpperCase().padStart(4, '0') : c; }).join('');
+  if (DISP === 'esc') return [...t].map(c => { const cp = c.codePointAt(0); return INVISIBLE(cp) ? '\\u' + cp.toString(16).toUpperCase().padStart(4, '0') : c; }).join('');
   if (DISP === 'cp') return [...t].map(c => 'U+' + c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')).join(' ');
-  if (DISP === 'skeleton') return t.replace(/[\\p{Mn}\\p{Mc}\\p{Cf}]/gu, '');
+  if (DISP === 'skeleton') return t.replace(/[\p{Mn}\p{Mc}\p{Cf}]/gu, '');
   return t;
 }
 

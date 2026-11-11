@@ -4,7 +4,7 @@
 
 只做导出与整理：不提供播放、不代理音频、不绕过任何付费或版权限制。
 
-当前版本：**1.3.0**（PC 便携化 + 双端任务链跨平台）
+当前版本：**1.3.1**（PC 便携化 + 双端任务链跨平台 + Android 固定签名）
 
 ---
 
@@ -71,20 +71,33 @@
 
 | 场景 | 操作 |
 | --- | --- |
-| 1.3.0 及以后 | 直接安装新版 APK，系统升级覆盖，歌单数据与登录态保留 |
-| 从更早版本升级 | 早期 APK 每次构建用随机调试证书，签名不一致无法覆盖；先卸载旧版再装新版，数据需重新同步 |
+| 1.3.1 及以后 | 直接安装新版 APK，系统升级覆盖，歌单数据与登录态保留 |
+| 1.3.0 及更早 | 这些版本每次构建用随机调试证书，签名不一致无法覆盖；先卸载旧版再装新版，数据需重新同步 |
 
-`versionCode` 随版本号递增（1.3.0 → 10300），签名证书固定为仓库内 `signing/` 的密钥，保证后续都能直接覆盖升级。
+`versionCode` 随版本号递增（1.3.1 → 10301），签名证书固定为仓库内 `signing/` 的密钥，从 1.3.1 起都能直接覆盖升级。
 
-### 源码运行 / 浏览器面板
+### 面板（Web 形态）单独运行
+
+面板不是外壳的附属功能，它是独立的本地服务，可以单独跑在自己的电脑、NAS、路由器或 Termux 里：
 
 ```bash
-npm install --no-audit --no-fund
-npm run panel      # 只跑面板，http://127.0.0.1:8788
-npm start          # 走 Electron 窗口
+git clone https://github.com/XVSVTsama/-netease-export.git
+cd -- -netease-export
+npm install --omit=dev --no-audit --no-fund   # 只装面板必需依赖
+node web/server.mjs                           # 默认 http://127.0.0.1:8788
 ```
 
-Termux 或 Linux 上同样可用：`sh install-termux.sh` 或 `node web/server.mjs`。
+源码位置：`web/server.mjs`（服务端，无框架）、`web/public/`（前端，无框架）。接口清单、数据目录结构、环境变量、systemd 与反向代理写法、常见问题都在 **[web/README.md](web/README.md)**。
+
+默认只监听 `127.0.0.1`；需要局域网内其它设备访问时设 `HOST=0.0.0.0`（无鉴权，别放公网）。
+
+### 桌面外壳 / 源码运行
+
+```bash
+npm start          # Electron 窗口（内部起同一个面板服务）
+```
+
+Termux 用 `sh install-termux.sh`，Linux / macOS 用 `sh start.sh`，Windows 用 `start.bat`。
 
 ## 更新与发布流程（维护者）
 
@@ -122,6 +135,7 @@ npx tauri android build --apk --target aarch64
 main.cjs               Electron 主进程（窗口、便携目录、端口选择、启动面板服务）
 web/server.mjs         面板服务端（接口 + 静态资源 + 任务调度）
 web/public/            面板前端
+web/README.md          面板部署与接口文档
 build.mjs              发布：重建文档 → 打包 zip → 核验 → 原子替换（纯 Node）
 runner.mjs             任务链执行器（直接用当前运行时跑脚本，不经 sh）
 *.mjs                  抓取与整理脚本（export/sync/fav/cpl/cal/merge/check/enrich/stage/covers）
@@ -141,7 +155,8 @@ signing/               Android 固定签名密钥（key.pk8 + cert.pem）
 | `NC_DEST` | 发布目录 | `NC_ROOT/导出` |
 | `NC_ZIP` | 核验的压缩包路径 | `NC_DEST.zip` |
 | `NC_STAGE` | `1` 表示写暂存区 `out2/staging` | 关 |
-| `PORT` | 面板端口 | 8788 |
+| `PORT` | 面板端口 | 8788（独立运行时 8789） |
+| `HOST` | 面板监听地址 | `127.0.0.1` |
 
 ## 关键接口记录
 
