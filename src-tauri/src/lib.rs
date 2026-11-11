@@ -40,19 +40,28 @@ fn fmt_dur(ms: i64) -> String {
 }
 
 fn to_csv(d: &Value) -> String {
-    let mut out = String::from("\u{feff}序号,歌名,制作人/团体,专辑,发行公司/厂牌,时长,状态\n");
+    let mut out = String::from("\u{feff}序号,歌名,制作人/团体,专辑,发行公司/厂牌,时长,时长秒,歌曲ID,专辑ID,流行度,MV_ID,别名,权限,状态\n");
     if let Some(rows) = d["rows"].as_array() {
         for (i, r) in rows.iter().enumerate() {
-            let esc = |v: &Value| format!("\"{}\"", v.as_str().unwrap_or("").replace('"', "\"\""));
+            let e = |v: &Value| format!("\"{}\"", v.as_str().unwrap_or("").replace('"', "\"\""));
             let company = r["company"].as_str().unwrap_or("");
+            let fee = r["fee"].as_i64().unwrap_or(0);
+            let perm = match fee { 0 => "免费", 1 => "VIP", 4 => "付费专辑", 8 => "低音质", _ => "其他" };
             out.push_str(&format!(
-                "{},{},{},{},{},{},{}\n",
+                "{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
                 i + 1,
-                esc(&r["name"]),
-                esc(&r["ar"]),
-                esc(&r["al"]),
-                if company.is_empty() { "\"未标注厂牌\"".to_string() } else { esc(&r["company"]) },
+                e(&r["name"]),
+                e(&r["ar"]),
+                e(&r["al"]),
+                if company.is_empty() { "\"未标注厂牌\"".to_string() } else { e(&r["company"]) },
                 fmt_dur(r["dur"].as_i64().unwrap_or(0)),
+                r["dur"].as_i64().unwrap_or(0) / 1000,
+                r["id"].as_i64().unwrap_or(0),
+                r["alId"].as_i64().unwrap_or(0),
+                r["pop"].as_i64().unwrap_or(0),
+                r["mv"].as_i64().unwrap_or(0),
+                e(&r["alia"]),
+                perm,
                 if r["ncr"].as_bool().unwrap_or(false) { "仅其他版本可播" } else { "正常" }
             ));
         }
@@ -194,11 +203,7 @@ async fn export_playlist(app: tauri::AppHandle, state: State<'_, AppState>, id: 
     if saved.is_empty() {
         return Err("写入文件失败".into());
     }
-    Ok(json_saved(saved, d["count"].as_i64().unwrap_or(0)))
-}
-
-fn json_saved(paths: Vec<String>, count: i64) -> Value {
-    serde_json::json!({ "ok": true, "paths": paths, "count": count })
+    Ok(serde_json::json!({ "ok": true, "paths": saved, "count": d["count"].as_i64().unwrap_or(0), "stats": d["stats"].clone() }))
 }
 
 #[tauri::command]

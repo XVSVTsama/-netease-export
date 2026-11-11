@@ -175,6 +175,10 @@ pub async fn playlist_detail(c: &Client, id: i64) -> Result<Value, String> {
             "id": s["id"].as_i64().unwrap_or(0),
             "name": name, "ar": ar, "al": al, "alId": al_id, "dur": dur,
             "ncr": ncr == 1, "company": "",
+            "pop": s["pop"].as_i64().unwrap_or(0),
+            "alia": s["alia"].as_array().map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" / ")).unwrap_or_default(),
+            "mv": s["mv"].as_i64().unwrap_or(0),
+            "fee": s["fee"].as_i64().unwrap_or(0),
         }));
     }
 
@@ -204,12 +208,32 @@ pub async fn playlist_detail(c: &Client, id: i64) -> Result<Value, String> {
         }
     }
 
+    let stats = classify(&rows);
     Ok(json!({
         "id": id,
         "name": pl["name"].as_str().unwrap_or(""),
         "count": rows.len(),
+        "stats": stats,
         "rows": rows,
     }))
+}
+
+/* ---------------- 专项分类 ---------------- */
+
+fn classify(rows: &[Value]) -> Value {
+    use regex::Regex;
+    let special_re = Regex::new(r"[\p{Mn}\p{Mc}\p{Cf}\p{So}\p{Co}]").unwrap();
+    let nonlatin_re = Regex::new(r"[\p{Cyrillic}\p{Hiragana}\p{Katakana}\p{Hangul}\p{Arabic}\p{Hebrew}\p{Greek}\p{Devanagari}\p{Tibetan}\p{Thai}\p{Yi}\p{Mongolian}\p{Georgian}\p{Armenian}\p{Ethiopic}\p{Sinhala}\p{Khmer}\p{Lao}\p{Myanmar}]").unwrap();
+    let (mut down, mut other_ver, mut special, mut nonlatin) = (0, 0, 0, 0);
+    for r in rows {
+        if r["ncr"].as_bool().unwrap_or(false) { other_ver += 1; }
+        if r["ncr"].as_bool().unwrap_or(false) && r["fee"].as_i64().unwrap_or(0) == 0 { down += 1; }
+        let name = r["name"].as_str().unwrap_or("");
+        if special_re.is_match(name) { special += 1; }
+        if nonlatin_re.is_match(name) { nonlatin += 1; }
+    }
+    json!({ "down": down, "otherVersion": other_ver, "special": special, "nonLatin": nonlatin,
+            "total": rows.len() })
 }
 
 /* ---------------- 收藏专辑 ---------------- */

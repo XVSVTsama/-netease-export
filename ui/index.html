@@ -43,6 +43,10 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
 .empty{color:var(--muted);font-size:13.5px;text-align:center;padding:18px 0}
 .hint{color:var(--muted);font-size:12px;margin-top:8px;text-align:center;line-height:1.6}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px}
+.stat .k{font-size:12px;color:var(--muted)}
+.stat .v{font-size:20px;font-weight:700;margin-top:2px}
 </style>
 </head>
 <body>
@@ -90,6 +94,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
     <button data-v="playlists" class="on">歌单</button>
     <button data-v="albums">收藏专辑</button>
     <button data-v="ranking">听歌排行</button>
+    <button data-v="special">专项统计</button>
   </div>
 
   <!-- 歌单 -->
@@ -130,6 +135,16 @@ input:focus,textarea:focus{border-color:var(--accent)}
     <div class="state" id="rankState"></div>
   </div>
 
+  <div id="view-special" hidden>
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h2 style="margin:0;flex:1">专项统计</h2>
+      <button class="ghost small" id="btnResetStats">重置</button>
+    </div>
+    <div class="stats" id="specialStats"></div>
+    <div class="hint">统计来自本次运行中导出过的歌单；执行「全部导出 CSV」后覆盖最完整</div>
+    <div class="state" id="specialState"></div>
+  </div>
+
   <div class="row" style="margin-top:12px"><button class="ghost" id="btnLogout">退出登录</button></div>
 </section>
 
@@ -152,6 +167,31 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 
 let uid = 0, nickname = '', pollTimer = null, busy = false;
 let PLAYLISTS = [], ALBUMS = [], RANK = [], RANK_WEEK = false, currentView = 'playlists', currentId = 0;
+let ACC = { down: 0, otherVersion: 0, special: 0, nonLatin: 0, total: 0, playlists: 0 };
+
+function accStats(st) {
+  if (!st) return;
+  ACC.down += st.down || 0;
+  ACC.otherVersion += st.otherVersion || 0;
+  ACC.special += st.special || 0;
+  ACC.nonLatin += st.nonLatin || 0;
+  ACC.total += st.total || 0;
+  ACC.playlists += 1;
+  renderSpecial();
+}
+
+function renderSpecial() {
+  const el = $('specialStats');
+  if (!el) return;
+  el.innerHTML = [
+    ['已导出歌单', ACC.playlists],
+    ['曲目合计', ACC.total],
+    ['仅其他版本可播', ACC.otherVersion],
+    ['特殊字符命名', ACC.special],
+    ['非拉丁文字', ACC.nonLatin],
+    ['已下架（保守估计）', ACC.down],
+  ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+}
 
 const fmtDur = ms => { if (!ms || ms <= 0) return '--:--'; const t = Math.round(ms/1000); return `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`; };
 const setState = (id, text, kind='') => { const el = $(id); if (!el) return; el.textContent = text || ''; el.className = 'state' + (kind ? ' ' + kind : ''); };
@@ -262,7 +302,7 @@ async function exportAll(format){
     const p = PLAYLISTS[i];
     const elapsed = Math.round((Date.now()-t0)/1000);
     setState('batchState', `导出中 ${i+1}/${PLAYLISTS.length}：${p.name}（耗时 ${elapsed}s，成功 ${ok} 失败 ${fail}）`);
-    try { await exportOne(p.id, format); ok++; } catch (e) { fail++; }
+    try { const r = await exportOne(p.id, format); accStats(r.stats); ok++; } catch (e) { fail++; }
   }
   setState('batchState', `完成：成功 ${ok}，失败 ${fail}，共 ${Math.round((Date.now()-t0)/1000)} 秒`, fail ? '' : 'ok');
   btnCsv.disabled = false; btnMd.disabled = false;
@@ -326,7 +366,8 @@ async function exportRank(){
 function switchView(v){
   currentView = v;
   document.querySelectorAll('#mainTabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  ['playlists','albums','ranking'].forEach(k => { $('view-'+k).hidden = k !== v; });
+  ['playlists','albums','ranking','special'].forEach(k => { $('view-'+k).hidden = k !== v; });
+  if (v === 'special') renderSpecial();
   if (v === 'albums' && !ALBUMS.length) loadAlbums();
   if (v === 'ranking' && !RANK.length) loadRank(false);
 }
@@ -349,17 +390,18 @@ $('btnAllCsv').onclick = () => exportAll('csv');
 $('btnAllMd').onclick = () => exportAll('md');
 $('btnAlbumCsv').onclick = exportAlbums;
 $('btnRankCsv').onclick = exportRank;
+$('btnResetStats').onclick = () => { ACC = { down: 0, otherVersion: 0, special: 0, nonLatin: 0, total: 0, playlists: 0 }; renderSpecial(); setState('specialState','已重置'); };
 $('btnBack').onclick = () => { $('detailCard').hidden = true; $('mainCard').hidden = false; };
 $('btnExportCsv').onclick = async () => {
   if (!currentId) return;
   setState('exportState','导出中…');
-  try { const r = await exportOne(currentId,'csv'); setState('exportState','已导出 '+r.count+' 首：'+r.paths.join(' / '),'ok'); }
+  try { const r = await exportOne(currentId,'csv'); accStats(r.stats); setState('exportState','已导出 '+r.count+' 首：'+r.paths.join(' / '),'ok'); }
   catch (e) { setState('exportState','导出失败：'+e,'err'); }
 };
 $('btnExportMd').onclick = async () => {
   if (!currentId) return;
   setState('exportState','导出中…');
-  try { const r = await exportOne(currentId,'md'); setState('exportState','已导出 '+r.count+' 首：'+r.paths.join(' / '),'ok'); }
+  try { const r = await exportOne(currentId,'md'); accStats(r.stats); setState('exportState','已导出 '+r.count+' 首：'+r.paths.join(' / '),'ok'); }
   catch (e) { setState('exportState','导出失败：'+e,'err'); }
 };
 $('btnLogout').onclick = async () => {
@@ -372,6 +414,7 @@ document.querySelectorAll('#mainTabs button').forEach(b => b.onclick = () => swi
 document.querySelectorAll('#view-ranking .seg button').forEach(b => b.onclick = () => loadRank(b.dataset.r === 'week'));
 window.addEventListener('beforeunload', stopPoll);
 
+renderSpecial();
 checkAccount(true);
 </script>
 </body>
