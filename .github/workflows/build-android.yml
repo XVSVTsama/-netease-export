@@ -37,6 +37,9 @@ jobs:
       - name: 安装项目依赖（含 Tauri CLI）
         run: npm install --no-audit --no-fund
 
+      - name: 界面自检（防脚本解析失败导致按钮全失效）
+        run: npm run test:ui
+
       - name: 初始化 Android 工程
         run: npx tauri android init --ci
 

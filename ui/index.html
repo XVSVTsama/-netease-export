@@ -1,226 +1,247 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#000000">
 <title>网易云导出</title>
-<style>
-:root{--bg:#fff;--card:#f5f5f7;--text:#1d1d1f;--muted:#6e6e73;--accent:#fa2d48;--line:#e5e5ea;--ok:#1db954;--warn:#c98a00}
-@media (prefers-color-scheme: dark){:root{--bg:#000;--card:#1c1c1e;--text:#f5f5f7;--muted:#8e8e93;--line:#2c2c2e;--ok:#30d158;--warn:#ffd60a}}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",system-ui,sans-serif;
-  padding:calc(16px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));min-height:100vh}
-h1{font-size:24px;margin:0 0 4px;letter-spacing:-.02em}
-.sub{color:var(--muted);font-size:13px;margin-bottom:14px;word-break:break-all}
-.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
-.card h2{font-size:15px;margin:0 0 10px;font-weight:600}
-button{padding:12px 16px;border-radius:12px;border:0;background:var(--accent);color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;min-height:44px}
-button.ghost{background:var(--bg);color:var(--text);border:1px solid var(--line)}
-button.small{padding:8px 12px;min-height:34px;font-size:13px}
-button:disabled{opacity:.4}
-input,textarea{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:15px/1.4 inherit;font-family:inherit;outline:none}
-textarea{min-height:88px;resize:vertical;font-size:13px}
-input:focus,textarea:focus{border-color:var(--accent)}
-.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.row > *{flex:1}
-.row > button{flex:0 0 auto}
-.seg{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px}
-.seg button{flex:1 0 auto;padding:9px 14px;border-radius:999px;background:var(--bg);color:var(--muted);border:1px solid var(--line);font-size:13.5px;min-height:38px}
-.seg button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-.field{margin-bottom:8px}
-.qr-wrap{text-align:center}
-.qr-wrap img{width:min(62vw,250px);height:auto;display:block;margin:10px auto 6px;background:#fff;padding:10px;border-radius:12px}
-.state{font-size:13px;min-height:20px;text-align:center;color:var(--muted);margin-top:6px}
-.state.err{color:var(--accent)}
-.state.ok{color:var(--ok)}
-.list{max-height:min(48vh,400px);overflow-y:auto;-webkit-overflow-scrolling:touch}
-.item{display:flex;justify-content:space-between;gap:10px;padding:11px 2px;border-top:1px solid var(--line);font-size:14px}
-.item:first-child{border-top:0}
-.item .n{flex:1;word-break:break-word}
-.item .c{color:var(--muted);font-size:12.5px;white-space:nowrap;flex:0 0 auto}
-.badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
-.empty{color:var(--muted);font-size:13.5px;text-align:center;padding:18px 0}
-.hint{color:var(--muted);font-size:12px;margin-top:8px;text-align:center;line-height:1.6}
-.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.progress{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:8px}
-.progress > i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
-.stat{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px}
-.stat .k{font-size:12px;color:var(--muted)}
-.stat .v{font-size:20px;font-weight:700;margin-top:2px}
-</style>
-<script>
-/* 兜底：脚本解析或运行出错时，把错误显示在页面顶部，避免“点了没反应却看不到原因” */
-window.addEventListener('error', e => {
-  const el = document.getElementById('sub');
-  if (el) el.textContent = '界面脚本出错：' + (e.message || '未知错误');
-});
-window.addEventListener('unhandledrejection', e => {
-  const el = document.getElementById('sub');
-  if (el) el.textContent = '请求失败：' + ((e.reason && (e.reason.message || e.reason)) || '未知错误');
-});
-</script>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="extra.css">
 </head>
 <body>
-<h1>网易云导出</h1>
-<div class="sub" id="sub">正在检查登录状态…</div>
 
-<section class="card" id="loginCard">
-  <h2>登录</h2>
-  <div class="seg" id="tabs">
-    <button data-m="qr" class="on">扫码</button>
-    <button data-m="phone">手机号</button>
-    <button data-m="email">邮箱</button>
-    <button data-m="cookie">Cookie</button>
+<header class="top">
+  <div class="bar">
+    <h1>网易云导出</h1>
+    <button class="icon-btn" id="privacyBtn" title="隐私模式">🔒</button>
+    <button class="icon-btn" id="themeBtn" title="切换主题">☾</button>
   </div>
-  <div id="pane-qr">
-    <div class="row"><button id="btnLogin">生成二维码</button></div>
-    <div id="qrBox" class="qr-wrap"></div>
-    <div class="hint">扫码后需在手机端确认；若提示环境异常，改用 Cookie</div>
-  </div>
-  <div id="pane-phone" hidden>
-    <div class="field"><input id="phone" inputmode="numeric" placeholder="手机号"></div>
-    <div class="field"><input id="phonePwd" type="password" placeholder="密码"></div>
-    <div class="row"><button class="ghost" id="btnPhonePwd">密码登录</button></div>
-    <div class="row" style="margin-top:8px">
-      <input id="smsCode" inputmode="numeric" placeholder="短信验证码">
-      <button class="ghost" id="btnSmsSent">获取</button>
-    </div>
-    <div class="row" style="margin-top:8px"><button id="btnPhoneSms">验证码登录</button></div>
-  </div>
-  <div id="pane-email" hidden>
-    <div class="field"><input id="email" inputmode="email" placeholder="邮箱"></div>
-    <div class="field"><input id="emailPwd" type="password" placeholder="密码"></div>
-    <button id="btnEmail">邮箱登录</button>
-  </div>
-  <div id="pane-cookie" hidden>
-    <div class="field"><textarea id="cookieText" placeholder="粘贴 MUSIC_U=... 或只贴 MUSIC_U 的值"></textarea></div>
-    <div class="row"><button id="btnCookie">用 Cookie 登录</button></div>
-    <div class="hint">最稳的方式，不受扫码风控影响</div>
-  </div>
-  <div class="state" id="state"></div>
-</section>
+  <div class="sub" id="sub">正在检查登录状态…</div>
+</header>
 
-<section class="card" id="mainCard" hidden>
-  <div class="seg" id="mainTabs">
-    <button data-v="playlists" class="on">歌单</button>
-    <button data-v="albums">收藏专辑</button>
-    <button data-v="favlist">收藏歌单</button>
-    <button data-v="ranking">听歌排行</button>
-    <button data-v="special">专项统计</button>
+<main>
+  <div class="banner" id="banner"></div>
+
+  <!-- ============ 登录 ============ -->
+  <section class="section" id="loginCard" hidden>
+    <h2>登录<span class="count">任选一种</span></h2>
+    <div class="seg" id="loginTabs">
+      <button data-m="qr" class="on">扫码</button>
+      <button data-m="phone">手机号</button>
+      <button data-m="email">邮箱</button>
+      <button data-m="cookie">Cookie</button>
+    </div>
+
+    <div id="pane-qr">
+      <div class="actions"><button class="btn primary" id="btnLogin">生成二维码</button></div>
+      <div id="qrBox"></div>
+      <div class="hint" id="qrHint">用手机网易云扫码，并在手机上点「确认登录」</div>
+    </div>
+
+    <div id="pane-phone" hidden>
+      <input type="text" id="phone" inputmode="numeric" placeholder="手机号" autocomplete="off" style="margin-bottom:10px">
+      <input type="password" id="phonePwd" placeholder="密码" autocomplete="off" style="margin-bottom:10px">
+      <div class="actions"><button class="btn" id="btnPhonePwd">密码登录</button></div>
+      <div class="row-label">或短信验证码</div>
+      <div class="actions" style="grid-template-columns:1fr auto">
+        <input type="text" id="smsCode" inputmode="numeric" placeholder="验证码" autocomplete="off">
+        <button class="btn small" id="btnSmsSent" style="white-space:nowrap">获取</button>
+      </div>
+      <div class="actions" style="margin-top:10px"><button class="btn primary" id="btnPhoneSms">验证码登录</button></div>
+    </div>
+
+    <div id="pane-email" hidden>
+      <input type="text" id="email" inputmode="email" placeholder="邮箱" autocomplete="off" style="margin-bottom:10px">
+      <input type="password" id="emailPwd" placeholder="密码" autocomplete="off" style="margin-bottom:10px">
+      <div class="actions"><button class="btn primary" id="btnEmail">邮箱登录</button></div>
+    </div>
+
+    <div id="pane-cookie" hidden>
+      <textarea id="cookieText" placeholder="粘贴 MUSIC_U=... 或只贴 MUSIC_U 的值" style="width:100%;min-height:96px;padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg-elev);color:var(--text);font-size:14px;font-family:var(--mono);outline:none;resize:vertical"></textarea>
+      <div class="actions" style="margin-top:10px"><button class="btn primary" id="btnCookie">用 Cookie 登录</button></div>
+    </div>
+
+    <div class="hint" id="state"></div>
+  </section>
+
+  <!-- ============ 概览 ============ -->
+  <div id="view-home">
+    <section class="section">
+      <h2>我的创建<span class="count" id="createdMeta"></span></h2>
+      <div class="stats" id="createdStats"></div>
+      <div class="row-label">歌单</div>
+      <div class="actions row3">
+        <button class="btn primary" id="btnAllCsv">CSV</button>
+        <button class="btn soft" id="btnAllMd">MD</button>
+        <button class="btn" id="btnRefresh">刷新</button>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>我的收藏<span class="count" id="favMeta"></span></h2>
+      <div class="stats" id="favStats"></div>
+      <div class="row-label">收藏专辑</div>
+      <div class="actions row3">
+        <button class="btn soft" id="btnLoadAlbums">加载</button>
+        <button class="btn" id="btnAlbumCsv">CSV</button>
+        <button class="btn" id="btnOpenAlbums">查看</button>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>任务</h2>
+      <div class="status-line">
+        <span class="dot" id="dot"></span>
+        <strong id="jobName" style="font-size:14px">空闲</strong>
+        <span class="pill-status" id="jobState">待命</span>
+      </div>
+      <div class="progress"><i id="batchBar"></i></div>
+      <div class="hint" id="batchState">没有正在运行的任务</div>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn" id="btnZip">打包成 zip</button>
+        <button class="btn" id="btnSpecial">查看专项</button>
+      </div>
+      <div class="hint" id="zipState"></div>
+    </section>
   </div>
 
-  <!-- 歌单 -->
-  <div id="view-playlists">
-    <div class="row" style="justify-content:space-between;margin-bottom:8px">
-      <h2 style="margin:0;flex:1">我的歌单</h2>
-      <button class="ghost small" id="btnPrivacy">隐私模式</button>
-      <button class="ghost small" id="btnRefresh">刷新</button>
-    </div>
-    <div class="seg" id="dispModes" style="margin-bottom:8px">
-      <button data-d="raw" class="on">原始</button>
-      <button data-d="mark">标记不可见</button>
-      <button data-d="esc">转义</button>
-      <button data-d="cp">U+ 码点</button>
-      <button data-d="skeleton">去组合符</button>
-    </div>
-    <div class="list" id="list"><div class="empty">加载中…</div></div>
-    <div class="row" style="margin-top:10px">
-      <button id="btnAllCsv">全部导出 CSV</button>
-      <button class="ghost" id="btnAllMd">全部导出 MD</button>
-    </div>
-    <div class="progress"><i id="batchBar"></i></div>
-    <div class="state" id="batchState"></div>
-    <div class="row" style="margin-top:8px"><button class="ghost" id="btnZip">打包成 zip</button></div>
-    <div class="state" id="zipState"></div>
+  <!-- ============ 歌单 ============ -->
+  <div id="view-browse" hidden>
+    <section class="section">
+      <h2>歌单<span class="count" id="plCount"></span></h2>
+      <input type="search" id="q" placeholder="搜索歌单名或 ID" autocomplete="off">
+      <div class="spacer"></div>
+      <div class="accs" id="plFilter">
+        <button class="chip on" data-f="all">全部</button>
+        <button class="chip" data-f="mine">我创建的</button>
+        <button class="chip" data-f="fav">收藏</button>
+        <button class="chip" data-f="priv">私密</button>
+        <button class="chip" data-f="empty">空歌单</button>
+        <button class="chip" data-f="big">大（≥500）</button>
+      </div>
+      <div class="modes" id="dispModes">
+        <button class="mode on" data-d="raw">原始</button>
+        <button class="mode" data-d="mark">标记不可见</button>
+        <button class="mode" data-d="esc">转义</button>
+        <button class="mode" data-d="cp">U+ 码点</button>
+        <button class="mode" data-d="skeleton">去组合符</button>
+      </div>
+      <div class="list" id="plist"><div class="empty">加载中…</div></div>
+    </section>
   </div>
 
-  <!-- 收藏专辑 -->
+  <!-- ============ 收藏专辑 ============ -->
   <div id="view-albums" hidden>
-    <div class="row" style="justify-content:space-between;margin-bottom:8px">
-      <h2 style="margin:0;flex:1">收藏专辑</h2>
-      <button class="ghost small" id="btnAlbumCsv">导出 CSV</button>
-    </div>
-    <div class="list" id="albums"><div class="empty">点上方「收藏专辑」加载</div></div>
-    <div class="state" id="albumState"></div>
+    <section class="section">
+      <h2>收藏专辑<span class="count" id="alCount"></span></h2>
+      <input type="search" id="aq" placeholder="搜索专辑名 / 艺人 / 厂牌" autocomplete="off">
+      <div class="spacer"></div>
+      <div class="actions row3">
+        <button class="btn soft" id="btnReloadAlbums">刷新</button>
+        <button class="btn" id="btnAlbumCsv2">导出 CSV</button>
+        <button class="btn" id="btnAlbumZipHint">说明</button>
+      </div>
+      <div class="list" id="alist" style="margin-top:12px"><div class="empty">点上方刷新加载</div></div>
+    </section>
   </div>
 
-  <!-- 排行 -->
-  <div id="view-favlist" hidden>
-    <div class="row" style="justify-content:space-between;margin-bottom:8px">
-      <h2 style="margin:0;flex:1">收藏歌单</h2>
-      <button class="ghost small" id="btnFavCsv">导出 CSV</button>
-    </div>
-    <div class="list" id="favlist"><div class="empty">加载中…</div></div>
-    <div class="state" id="favState"></div>
+  <!-- ============ 专项 ============ -->
+  <div id="view-docs" hidden>
+    <section class="section">
+      <h2>专项视图<span class="count" id="docMeta">导出歌单时自动累积</span></h2>
+      <div class="stats" id="specialStats"></div>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn" id="btnSpecialList">查看明细</button>
+        <button class="btn soft" id="btnSpecialCsv">导出清单 CSV</button>
+      </div>
+      <div class="list" id="specialList" style="margin-top:12px"></div>
+      <div class="hint" id="specialState"></div>
+    </section>
   </div>
 
-  <div id="view-ranking" hidden>
-    <div class="row" style="justify-content:space-between;margin-bottom:8px">
-      <h2 style="margin:0;flex:1">听歌排行</h2>
-      <button class="ghost small" id="btnRankCsv">导出 CSV</button>
-    </div>
-    <div class="seg" style="margin-bottom:8px">
-      <button data-r="all" class="on">全部时间</button>
-      <button data-r="week">最近一周</button>
-    </div>
-    <div class="list" id="ranking"><div class="empty">点上方「听歌排行」加载</div></div>
-    <div class="state" id="rankState"></div>
+  <!-- ============ 设置 ============ -->
+  <div id="view-setting" hidden>
+    <section class="section">
+      <h2>账号</h2>
+      <div class="stats" id="accStats"></div>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn" id="btnRelogin">重新登录</button>
+        <button class="btn" id="btnLogout">退出登录</button>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>收藏歌单<span class="count" id="favMeta2"></span></h2>
+      <div class="actions row3">
+        <button class="btn soft" id="btnFavRender">刷新</button>
+        <button class="btn" id="btnFavCsv">导出 CSV</button>
+        <button class="btn" id="btnFavZip">说明</button>
+      </div>
+      <div class="list" id="favlist" style="margin-top:12px"><div class="empty">暂无</div></div>
+      <div class="hint" id="favState"></div>
+    </section>
+
+    <section class="section">
+      <h2>听歌排行<span class="count" id="rankMeta"></span></h2>
+      <div class="seg" id="rankSeg">
+        <button data-r="all" class="on">全部时间</button>
+        <button data-r="week">最近一周</button>
+      </div>
+      <div class="actions row3">
+        <button class="btn soft" id="btnRankLoad">加载</button>
+        <button class="btn" id="btnRankCsv">导出 CSV</button>
+        <button class="btn" id="btnRankZero">—</button>
+      </div>
+      <div class="list" id="ranking" style="margin-top:12px"><div class="empty">点上方加载</div></div>
+      <div class="hint" id="rankState"></div>
+    </section>
+
+    <section class="section">
+      <h2>关于</h2>
+      <div class="hint">
+        导出文件写入 <code>/sdcard/Download/网易云导出</code>，同时在应用私有目录留一份。<br>
+        本应用只导出公开的歌单信息与曲目元数据，不播放、不下载音频，也不绕过任何付费或版权限制。<br>
+        版本 <span id="ver">1.4.0</span>
+      </div>
+    </section>
   </div>
 
-  <div id="view-special" hidden>
-    <div class="row" style="justify-content:space-between;margin-bottom:8px">
-      <h2 style="margin:0;flex:1">专项统计</h2>
-      <button class="ghost small" id="btnResetStats">重置</button>
-    </div>
-    <div class="stats" id="specialStats"></div>
-    <div class="row" style="margin-top:10px">
-      <button class="ghost" id="btnSpecialList">查看明细</button>
-      <button class="ghost" id="btnSpecialCsv">导出清单 CSV</button>
-    </div>
-    <div class="list" id="specialList" style="margin-top:8px"></div>
-    <div class="hint">统计来自本次运行中导出过的歌单；执行「全部导出 CSV」后覆盖最完整</div>
-    <div class="state" id="specialState"></div>
+  <!-- ============ 详情（歌单 / 专辑） ============ -->
+  <div id="view-detail" hidden>
+    <section class="section">
+      <div class="actions row3" style="margin-bottom:14px">
+        <button class="btn small" id="btnBack">‹ 返回</button>
+        <button class="btn small soft" id="btnExportCsv">导出 CSV</button>
+        <button class="btn small" id="btnExportMd">导出 MD</button>
+      </div>
+      <h2 id="dTitle">歌单</h2>
+      <div class="sub" id="dMeta" style="font-size:13px;color:var(--muted);margin:-4px 0 12px"></div>
+      <div class="tracks" id="dList"><div class="empty">加载中…</div></div>
+      <div class="hint" id="dState"></div>
+    </section>
   </div>
+</main>
 
-  <div class="row" style="margin-top:12px"><button class="ghost" id="btnLogout">退出登录</button></div>
-</section>
-
-<section class="card" id="albumDetailCard" hidden>
-  <div class="row" style="justify-content:space-between;margin-bottom:6px">
-    <button class="ghost small" id="btnAlbumBack">← 返回</button>
-    <button class="ghost small" id="btnAlbumExportCsv">导出 CSV</button>
-    <button class="ghost small" id="btnAlbumExportMd">导出 MD</button>
-  </div>
-  <h2 id="albumTitle" style="margin:0 0 2px">专辑</h2>
-  <div class="sub" id="albumMeta" style="margin:0 0 8px"></div>
-  <div class="list" id="albumTracks"><div class="empty">加载中…</div></div>
-  <div class="state" id="albumExportState"></div>
-</section>
-
-<section class="card" id="detailCard" hidden>
-  <div class="row" style="justify-content:space-between;margin-bottom:6px">
-    <button class="ghost small" id="btnBack">← 返回</button>
-    <button class="ghost small" id="btnExportCsv">导出 CSV</button>
-    <button class="ghost small" id="btnExportMd">导出 MD</button>
-  </div>
-  <h2 id="detailTitle" style="margin:0 0 2px">歌单</h2>
-  <div class="sub" id="detailMeta" style="margin:0 0 8px"></div>
-  <div class="list" id="tracks"><div class="empty">加载中…</div></div>
-  <div class="state" id="exportState"></div>
-</section>
+<nav class="tabs">
+  <a href="#" data-v="home" class="on"><span class="i">◎</span>概览</a>
+  <a href="#" data-v="browse"><span class="i">☰</span>歌单</a>
+  <a href="#" data-v="albums"><span class="i">◫</span>收藏专辑</a>
+  <a href="#" data-v="docs"><span class="i">✳</span>专项</a>
+  <a href="#" data-v="setting"><span class="i">⚙</span>设置</a>
+</nav>
 
 <script>
 const inv = (cmd, args = {}) => window.__TAURI__.core.invoke(cmd, args);
 const $ = id => document.getElementById(id);
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let uid = 0, nickname = '', pollTimer = null, busy = false;
-let PLAYLISTS = [], ALBUMS = [], RANK = [], RANK_WEEK = false, currentView = 'playlists', currentId = 0;
-let ACC = { down: 0, otherVersion: 0, special: 0, nonLatin: 0, total: 0, playlists: 0 };
+let PLAYLISTS = [], ALBUMS = [], RANK = [], FAVLIST = [], RANK_WEEK = false;
+let currentView = 'home', detailKind = '', detailId = 0, detailRows = [], detailPage = 0;
 let DISP = 'raw', PRIVACY = false;
-let FAVLIST = [];
+let ACC = { down: 0, otherVersion: 0, special: 0, nonLatin: 0, total: 0, playlists: 0 };
+let batchStop = false;
+const PAGE = 200;
 
 const INVISIBLE = cp => cp < 0x20 || cp === 0x7f || (cp >= 0x200b && cp <= 0x200f) ||
   (cp >= 0x202a && cp <= 0x202e) || (cp >= 0x2066 && cp <= 0x2069) || cp === 0xfeff || cp === 0xad ||
@@ -237,23 +258,305 @@ function disp(s) {
   return t;
 }
 
-function maskPl(name, idx) { return PRIVACY ? `歌单 ${String(idx + 1).padStart(3, '0')}` : name; }
-function maskNick() { return PRIVACY ? '账号 1' : nickname; }
+const maskPl = (name, idx) => PRIVACY ? '歌单 ' + String(idx + 1).padStart(3, '0') : name;
+const maskNick = () => PRIVACY ? '账号 1' : nickname;
+const fmtDur = ms => { if (!ms || ms <= 0) return '--:--'; const t = Math.round(ms / 1000); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
+const setHint = (id, text, kind) => { const el = $(id); if (!el) return; el.className = 'hint' + (kind ? ' ' + kind : ''); el.textContent = text || ''; };
+
+function banner(text, kind) {
+  const el = $('banner');
+  if (!text) { el.className = 'banner'; el.textContent = ''; return; }
+  el.className = 'banner on' + (kind ? ' ' + kind : '');
+  el.textContent = text;
+}
+
+window.onerror = (m) => banner('界面脚本错误：' + m);
+window.addEventListener('unhandledrejection', e => banner('界面脚本错误：' + (e.reason && e.reason.message || e.reason)));
+
+/* ---------- 主题 ---------- */
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $('themeBtn').textContent = t === 'dark' ? '☾' : '☀';
+  document.querySelector('meta[name=theme-color]').content = t === 'dark' ? '#000000' : '#ffffff';
+  try { localStorage.setItem('ne.theme', t); } catch (e) {}
+}
+$('themeBtn').onclick = () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+
+/* ---------- 隐私 / 显示模式 ---------- */
+function togglePrivacy() {
+  PRIVACY = !PRIVACY;
+  $('privacyBtn').textContent = PRIVACY ? '🔓' : '🔒';
+  renderSub();
+  renderPlaylistList(); renderFavlist(); if (detailKind === 'pl' || detailKind === 'al') renderDetail();
+}
+$('privacyBtn').onclick = togglePrivacy;
 
 function setDisp(m) {
   DISP = m;
   document.querySelectorAll('#dispModes button').forEach(b => b.classList.toggle('on', b.dataset.d === m));
-  if (PLAYLISTS.length) renderPlaylists();
-  if ($('detailCard').hidden === false) { /* 详情需重新拉取才刷新，忽略 */ }
+  renderPlaylistList();
+  if (detailKind) renderDetail();
 }
 
-function togglePrivacy() {
-  PRIVACY = !PRIVACY;
-  $('btnPrivacy').textContent = PRIVACY ? '隐私：开' : '隐私模式';
-  $('sub').textContent = PRIVACY ? '已登录（隐私模式）' : (nickname ? `已登录：${nickname}（uid ${uid}）` : '已登录');
-  if (PLAYLISTS.length) renderPlaylists();
+/* ---------- 视图 ---------- */
+const MAIN_VIEWS = ['home', 'browse', 'albums', 'docs', 'setting'];
+function showView(v) {
+  currentView = v;
+  MAIN_VIEWS.concat(['detail']).forEach(k => { const el = $('view-' + k); if (el) el.hidden = k !== v; });
+  document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.v === v));
+  if (v === 'browse') renderPlaylistList();
+  if (v === 'albums' && !ALBUMS.length) loadAlbums();
+  if (v === 'docs') renderSpecial();
+  if (v === 'setting') renderAccStats();
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('.tabs a').forEach(a => a.onclick = e => { e.preventDefault(); showView(a.dataset.v); });
+
+function renderSub() {
+  if (!nickname) { $('sub').textContent = '未登录'; return; }
+  const fav = PLAYLISTS.filter(p => !p.mine).length;
+  const base = PRIVACY ? '已登录（隐私模式）' : '已登录：' + nickname + '（uid ' + uid + '）';
+  $('sub').textContent = PLAYLISTS.length ? base + ' · 歌单 ' + PLAYLISTS.length + ' 个 · 收藏 ' + fav + ' 个' : base;
 }
 
+/* ---------- 统计 ---------- */
+const statHtml = (k, v, sub) => '<div class="stat"><div class="k">' + k + '</div><div class="v">' + v + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
+
+function renderHomeStats() {
+  const mine = PLAYLISTS.filter(p => p.mine);
+  const fav = PLAYLISTS.filter(p => !p.mine);
+  const songs = mine.reduce((s, p) => s + (p.count || 0), 0);
+  const priv = mine.filter(p => p.privacy === 10).length;
+  const empty = mine.filter(p => !p.count).length;
+  $('createdMeta').textContent = mine.length ? '歌单 ' + mine.length + ' 个' : '';
+  $('createdStats').innerHTML = PLAYLISTS.length
+    ? statHtml('歌单', mine.length, '公开 ' + (mine.length - priv) + ' · 私密 ' + priv) +
+      statHtml('歌曲', songs, '去重前合计') +
+      statHtml('空歌单', empty, '0 首')
+    : statHtml('歌单', '—', '刷新后显示');
+  $('favMeta').textContent = fav.length ? '收藏歌单 ' + fav.length + ' 个' : '';
+  $('favStats').innerHTML = statHtml('收藏歌单', fav.length, '含订阅') +
+    statHtml('收藏专辑', ALBUMS.length || '—', ALBUMS.length ? (ALBUMS.reduce((s, a) => s + (a.size || 0), 0) + ' 首') : '点「加载」');
+  $('favMeta2').textContent = fav.length ? '共 ' + fav.length + ' 个' : '';
+}
+
+function renderAccStats() {
+  $('accStats').innerHTML = statHtml('账号', maskNick() || '未登录', 'uid ' + (uid || '—')) +
+    statHtml('歌单', PLAYLISTS.length || '—', '创建 + 收藏') +
+    statHtml('收藏专辑', ALBUMS.length || '—', ALBUMS.length ? '已加载' : '未加载');
+}
+
+function renderSpecial() {
+  $('specialStats').innerHTML = [
+    ['已导出歌单', ACC.playlists],
+    ['曲目合计', ACC.total],
+    ['仅其他版本可播', ACC.otherVersion],
+    ['特殊字符命名', ACC.special],
+    ['非拉丁文字', ACC.nonLatin],
+    ['已下架（保守）', ACC.down],
+  ].map(([k, v]) => statHtml(k, v, '')).join('');
+}
+
+/* ---------- 登录 ---------- */
+function switchLoginTab(m) {
+  document.querySelectorAll('#loginTabs button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+  ['qr', 'phone', 'email', 'cookie'].forEach(k => { $('pane-' + k).hidden = k !== m; });
+  $('state').textContent = '';
+}
+document.querySelectorAll('#loginTabs button').forEach(b => b.onclick = () => switchLoginTab(b.dataset.m));
+
+function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+async function afterLogin() {
+  stopPoll();
+  $('state').textContent = '登录成功';
+  $('qrBox').innerHTML = '';
+  setTimeout(() => checkAccount(), 300);
+}
+
+async function checkAccount(silent) {
+  try {
+    const a = await inv('account');
+    if (a.logged) {
+      uid = a.uid || 0; nickname = a.nickname || '';
+      $('loginCard').hidden = true;
+      renderSub();
+      await loadPlaylists(silent);
+    } else {
+      nickname = ''; uid = 0;
+      $('loginCard').hidden = false;
+      $('sub').textContent = '未登录';
+    }
+  } catch (e) {
+    $('loginCard').hidden = false;
+    $('sub').textContent = '未登录';
+    if (!silent) $('state').textContent = '检查登录态失败：' + e;
+  }
+}
+
+async function startQr() {
+  if (busy) return;
+  busy = true; $('btnLogin').disabled = true; stopPoll(); $('qrBox').innerHTML = '';
+  $('state').textContent = '正在生成二维码…';
+  try {
+    const q = await inv('qr_new');
+    $('qrBox').innerHTML = '<img src="' + q.img + '" alt="二维码">';
+    $('state').textContent = '等待扫码…';
+    pollTimer = setInterval(async () => {
+      try {
+        const s = await inv('qr_poll');
+        if (s.code === 802) $('state').textContent = '已扫码，请在手机上确认…';
+        else if (s.code === 803) { await afterLogin(); }
+        else if (s.code === 800 || s.code === 8821) { stopPoll(); $('qrBox').innerHTML = ''; $('state').textContent = '二维码失效或被风控，建议改用 Cookie 登录'; }
+      } catch (e) { stopPoll(); $('state').textContent = '轮询失败：' + e; }
+    }, 2000);
+  } catch (e) { $('state').textContent = '生成二维码失败：' + e; }
+  finally { busy = false; $('btnLogin').disabled = false; }
+}
+
+async function runLogin(cmd, args) {
+  $('state').textContent = '登录中…';
+  try {
+    const r = await inv(cmd, args || {});
+    if (r && r.ok) await afterLogin();
+    else $('state').textContent = '登录失败' + (r && r.message ? '：' + r.message : '');
+  } catch (e) { $('state').textContent = String(e); }
+}
+
+$('btnLogin').onclick = startQr;
+$('btnPhonePwd').onclick = () => runLogin('login_phone_password', { phone: $('phone').value.trim(), password: $('phonePwd').value });
+$('btnPhoneSms').onclick = () => runLogin('login_phone_captcha', { phone: $('phone').value.trim(), captcha: $('smsCode').value.trim() });
+$('btnEmail').onclick = () => runLogin('login_email', { email: $('email').value.trim(), password: $('emailPwd').value });
+$('btnCookie').onclick = () => runLogin('login_cookie', { cookie: $('cookieText').value.trim() });
+$('btnSmsSent').onclick = async () => {
+  const phone = $('phone').value.trim();
+  if (!phone) { $('state').textContent = '请先填手机号'; return; }
+  $('state').textContent = '发送中…';
+  try {
+    const r = await inv('sms_sent', { phone });
+    $('state').textContent = r.message || (r.ok ? '已发送' : '发送失败');
+  } catch (e) { $('state').textContent = String(e); }
+};
+
+/* ---------- 歌单 ---------- */
+let PL_FILTER = 'all', PL_Q = '';
+
+async function loadPlaylists(silent) {
+  if (!silent) $('plist').innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const r = await inv('playlists', { uid });
+    PLAYLISTS = r.items || [];
+    FAVLIST = PLAYLISTS.filter(p => !p.mine);
+    renderSub(); renderHomeStats(); renderPlaylistList(); renderFavlist(); renderAccStats();
+  } catch (e) {
+    $('plist').innerHTML = '<div class="empty">加载失败：' + esc(e) + '</div>';
+  }
+}
+
+function filteredPlaylists() {
+  const q = PL_Q.toLowerCase();
+  return PLAYLISTS.filter(p => {
+    if (PL_FILTER === 'mine' && !p.mine) return false;
+    if (PL_FILTER === 'fav' && p.mine) return false;
+    if (PL_FILTER === 'priv' && p.privacy !== 10) return false;
+    if (PL_FILTER === 'empty' && p.count) return false;
+    if (PL_FILTER === 'big' && (p.count || 0) < 500) return false;
+    if (q && !(String(p.name).toLowerCase().includes(q) || String(p.id).includes(q))) return false;
+    return true;
+  });
+}
+
+function renderPlaylistList() {
+  const list = filteredPlaylists();
+  $('plCount').textContent = PLAYLISTS.length ? list.length + ' / ' + PLAYLISTS.length + ' 个' : '';
+  if (!list.length) { $('plist').innerHTML = '<div class="empty">' + (PLAYLISTS.length ? '没有匹配的歌单' : '还没有加载，点概览页刷新') + '</div>'; return; }
+  const MAX = 400;
+  const shown = list.slice(0, MAX);
+  let html = shown.map((p, i) => {
+    const flags = [];
+    if (!p.mine) flags.push('<span class="badge">收藏</span>');
+    if (p.privacy === 10) flags.push('<span class="badge">私密</span>');
+    return '<button class="row" data-id="' + p.id + '">' +
+      '<div class="body"><div class="title">' + flags.join('') + esc(maskPl(disp(p.name), i)) + '</div>' +
+      '<div class="meta">' + (p.mine ? '我创建的' : esc(p.creator || '未知作者')) + ' · ' + (p.count || 0) + ' 首</div></div>' +
+      '<div class="tail">›</div></button>';
+  }).join('');
+  if (list.length > MAX) html += '<div class="empty">仅显示前 ' + MAX + ' 个，请用搜索或筛选缩小范围</div>';
+  $('plist').innerHTML = html;
+  $('plist').querySelectorAll('[data-id]').forEach(el => el.onclick = () => openDetail('pl', Number(el.dataset.id)));
+}
+
+document.querySelectorAll('#plFilter .chip').forEach(b => b.onclick = () => {
+  PL_FILTER = b.dataset.f;
+  document.querySelectorAll('#plFilter .chip').forEach(x => x.classList.toggle('on', x === b));
+  renderPlaylistList();
+});
+document.querySelectorAll('#dispModes button').forEach(b => b.onclick = () => setDisp(b.dataset.d));
+$('q').oninput = e => { PL_Q = e.target.value.trim(); renderPlaylistList(); };
+$('btnRefresh').onclick = () => { loadPlaylists(); showView('browse'); };
+$('btnOpenAlbums').onclick = () => showView('albums');
+$('btnSpecial').onclick = () => showView('docs');
+
+/* ---------- 详情 ---------- */
+async function openDetail(kind, id) {
+  detailKind = kind; detailId = id; detailRows = []; detailPage = 0;
+  $('dTitle').textContent = '加载中…';
+  $('dMeta').textContent = '';
+  $('dList').innerHTML = '<div class="empty">正在拉取曲目…（曲目多时需要一会儿）</div>';
+  $('dState').textContent = '';
+  showView('detail');
+  try {
+    const d = kind === 'pl' ? await inv('playlist_detail', { id }) : await inv('album_detail', { id });
+    detailRows = d.rows || [];
+    $('dTitle').textContent = d.name || (kind === 'pl' ? '歌单' : '专辑');
+    if (kind === 'pl') {
+      $('dMeta').textContent = '曲目 ' + (d.count || detailRows.length) + ' 首';
+    } else {
+      const t = d.publishTime ? new Date(d.publishTime).toISOString().slice(0, 10) : '—';
+      $('dMeta').textContent = (d.artists || '未知') + ' · ' + (d.company || '未标注厂牌') + ' · ' + t + ' · ' + (d.count || detailRows.length) + ' 首';
+    }
+    renderDetail();
+  } catch (e) {
+    $('dTitle').textContent = kind === 'pl' ? '歌单' : '专辑';
+    $('dList').innerHTML = '<div class="empty">加载失败：' + esc(e) + '</div>';
+  }
+}
+
+function renderDetail() {
+  if (!detailRows.length) { $('dList').innerHTML = '<div class="empty">没有曲目</div>'; return; }
+  const shown = detailRows.slice(0, (detailPage + 1) * PAGE);
+  let html = shown.map((r, i) => {
+    const flag = r.ncr ? '<span class="tag">仅其他版本</span>' : '';
+    const meta = [r.ar, r.al, r.company || '未标注厂牌'].filter(Boolean).map(esc).join(' · ');
+    return '<div class="track"><span class="idx">' + (i + 1) + '</span><div class="body">' +
+      '<div class="title">' + esc(disp(r.name)) + flag + '</div><div class="meta">' + meta + '</div></div>' +
+      '<span class="tail">' + fmtDur(r.dur) + '</span></div>';
+  }).join('');
+  if (detailRows.length > shown.length) {
+    html += '<button class="more" id="dMore">继续加载（已显示 ' + shown.length + ' / ' + detailRows.length + '）</button>';
+  }
+  $('dList').innerHTML = html;
+  const more = $('dMore');
+  if (more) more.onclick = () => { detailPage++; renderDetail(); };
+}
+
+$('btnBack').onclick = () => showView(detailKind === 'al' ? 'albums' : 'browse');
+
+async function exportDetail(format) {
+  if (!detailId) return;
+  $('dState').textContent = '导出中…';
+  try {
+    const r = detailKind === 'pl'
+      ? await inv('export_playlist', { id: detailId, format })
+      : await inv('export_album', { id: detailId, format });
+    if (detailKind === 'pl') accStats(r.stats);
+    $('dState').textContent = '已导出 ' + (r.count || '') + ' 首：' + (r.paths || []).join(' / ');
+  } catch (e) { $('dState').textContent = '导出失败：' + e; }
+}
+$('btnExportCsv').onclick = () => exportDetail('csv');
+$('btnExportMd').onclick = () => exportDetail('md');
+
+/* ---------- 批量导出 ---------- */
 function accStats(st) {
   if (!st) return;
   ACC.down += st.down || 0;
@@ -265,334 +568,198 @@ function accStats(st) {
   renderSpecial();
 }
 
-function renderSpecial() {
-  const el = $('specialStats');
-  if (!el) return;
-  el.innerHTML = [
-    ['已导出歌单', ACC.playlists],
-    ['曲目合计', ACC.total],
-    ['仅其他版本可播', ACC.otherVersion],
-    ['特殊字符命名', ACC.special],
-    ['非拉丁文字', ACC.nonLatin],
-    ['已下架（保守估计）', ACC.down],
-  ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
-}
-
-const fmtDur = ms => { if (!ms || ms <= 0) return '--:--'; const t = Math.round(ms/1000); return `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`; };
-const setState = (id, text, kind='') => { const el = $(id); if (!el) return; el.textContent = text || ''; el.className = 'state' + (kind ? ' ' + kind : ''); };
-
-function stopPoll(){ if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
-
-/* ---------- 登录 ---------- */
-function switchLoginTab(m){
-  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
-  ['qr','phone','email','cookie'].forEach(k => { $('pane-'+k).hidden = k !== m; });
-  setState('state','');
-}
-
-async function afterLogin(){ stopPoll(); setState('state','登录成功','ok'); setTimeout(()=>checkAccount(), 300); }
-
-async function checkAccount(silent=false){
-  try {
-    const a = await inv('account');
-    if (a.logged) {
-      uid = a.uid || 0; nickname = a.nickname || '';
-      $('sub').textContent = `已登录：${nickname}（uid ${uid}）`;
-      $('loginCard').hidden = true; $('mainCard').hidden = false;
-      await loadPlaylists(silent);
-    } else {
-      $('sub').textContent = '未登录';
-      $('loginCard').hidden = false; $('mainCard').hidden = true;
-    }
-  } catch (e) {
-    $('sub').textContent = '未登录';
-    if (!silent) setState('state','检查登录态失败：'+e,'err');
+async function exportAll(format) {
+  const mine = PLAYLISTS.filter(p => p.mine);
+  if (!mine.length) { $('batchState').textContent = '没有可导出的歌单，先刷新'; return; }
+  batchStop = false;
+  const target = mine;
+  let ok = 0, fail = 0;
+  $('btnAllCsv').disabled = true; $('btnAllMd').disabled = true;
+  $('dot').className = 'dot run'; $('jobName').textContent = '批量导出 ' + format.toUpperCase(); $('jobState').textContent = '运行中';
+  $('batchState').textContent = '点击这里可以停止';
+  $('batchState').onclick = () => { batchStop = true; $('batchState').textContent = '正在停止…'; };
+  const t0 = Date.now();
+  for (let i = 0; i < target.length; i++) {
+    if (batchStop) break;
+    const p = target[i];
+    $('batchBar').style.width = Math.round((i / target.length) * 100) + '%';
+    $('batchState').textContent = '导出中 ' + (i + 1) + '/' + target.length + '：' + p.name +
+      '（' + Math.round((Date.now() - t0) / 1000) + 's，成功 ' + ok + ' 失败 ' + fail + '）· 点击停止';
+    try { const r = await inv('export_playlist', { id: p.id, format }); accStats(r.stats); ok++; }
+    catch (e) { fail++; }
   }
+  $('batchBar').style.width = batchStop ? $('batchBar').style.width : '100%';
+  $('dot').className = 'dot ' + (fail ? 'err' : 'ok');
+  $('jobName').textContent = batchStop ? '已停止' : '已完成';
+  $('jobState').textContent = Math.round((Date.now() - t0) / 1000) + ' 秒';
+  $('batchState').textContent = (batchStop ? '已停止：' : '完成：') + '成功 ' + ok + '，失败 ' + fail;
+  $('batchState').onclick = null;
+  $('btnAllCsv').disabled = false; $('btnAllMd').disabled = false;
 }
+$('btnAllCsv').onclick = () => exportAll('csv');
+$('btnAllMd').onclick = () => exportAll('md');
 
-async function startQr(){
-  if (busy) return;
-  busy = true; $('btnLogin').disabled = true; stopPoll(); $('qrBox').innerHTML = '';
-  setState('state','正在生成二维码…');
+$('btnZip').onclick = async () => {
+  $('zipState').textContent = '打包中…';
   try {
-    const q = await inv('qr_new');
-    $('qrBox').innerHTML = `<img src="${q.img}" alt="二维码">`;
-    setState('state','等待扫码…');
-    pollTimer = setInterval(async () => {
-      try {
-        const s = await inv('qr_poll');
-        if (s.code === 802) setState('state','已扫码，请在手机上确认…');
-        else if (s.code === 803) { await afterLogin(); $('qrBox').innerHTML=''; }
-        else if (s.code === 800 || s.code === 8821) { stopPoll(); $('qrBox').innerHTML=''; setState('state','二维码失效或被风控，建议用 Cookie 登录','err'); }
-      } catch (e) { stopPoll(); setState('state','轮询失败：'+e,'err'); }
-    }, 2000);
-  } catch (e) { setState('state','生成二维码失败：'+e,'err'); }
-  finally { busy = false; $('btnLogin').disabled = false; }
-}
+    const r = await inv('zip_exports');
+    $('zipState').textContent = '已打包 ' + r.files + ' 个文件，' + (r.size / 1048576).toFixed(1) + ' MB\n' + (r.public || r.path);
+  } catch (e) { $('zipState').textContent = '打包失败：' + e; }
+};
 
-async function runLogin(cmd, args){
-  setState('state','登录中…');
-  try { const r = await inv(cmd, args||{}); if (r && r.ok) await afterLogin(); else setState('state','登录失败','err'); }
-  catch (e) { setState('state', String(e), 'err'); }
-}
-
-/* ---------- 歌单 ---------- */
-async function loadPlaylists(silent=false){
-  if (!silent) $('list').innerHTML = '<div class="empty">加载中…</div>';
+/* ---------- 收藏专辑 ---------- */
+let AL_Q = '';
+async function loadAlbums() {
+  $('alist').innerHTML = '<div class="empty">加载中…</div>';
   try {
-    const r = await inv('playlists', { uid });
-    PLAYLISTS = r.items || [];
-    FAVLIST = PLAYLISTS.filter(p => !p.mine);
-    renderPlaylists();
-    if (PRIVACY) $('sub').textContent = `已登录（隐私模式）· 歌单 ${r.total} 个`;
-    else $('sub').textContent = `已登录：${nickname}（uid ${uid}）· 歌单 ${r.total} 个`;
-  } catch (e) { $('list').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`; }
+    const r = await inv('collected_albums');
+    ALBUMS = r.items || [];
+    renderAlbums(); renderHomeStats(); renderAccStats();
+  } catch (e) { $('alist').innerHTML = '<div class="empty">加载失败：' + esc(e) + '</div>'; }
 }
 
-function renderPlaylists() {
-  $('list').innerHTML = PLAYLISTS.length ? PLAYLISTS.map((p, i) => {
-    const tags = [];
-    if (!p.mine) tags.push('<span class="badge">收藏</span>');
-    if (p.privacy === 10) tags.push('<span class="badge">私密</span>');
-    return `<div class="item" data-id="${p.id}" data-name="${esc(p.name)}" style="cursor:pointer"><span class="n">${tags.join('')}${esc(maskPl(disp(p.name), i))}</span><span class="c">${p.count} 首 ›</span></div>`;
-  }).join('') : '<div class="empty">没有歌单</div>';
-  document.querySelectorAll('#list [data-id]').forEach(el => el.onclick = () => openPlaylist(Number(el.dataset.id), el.dataset.name));
+function renderAlbums() {
+  const q = AL_Q.toLowerCase();
+  const list = ALBUMS.filter(a => !q || [a.name, a.artists, a.company].some(v => String(v || '').toLowerCase().includes(q)));
+  $('alCount').textContent = ALBUMS.length ? list.length + ' / ' + ALBUMS.length + ' 张' : '';
+  if (!list.length) { $('alist').innerHTML = '<div class="empty">' + (ALBUMS.length ? '没有匹配的专辑' : '还没有加载，点刷新') + '</div>'; return; }
+  const MAX = 400;
+  const shown = list.slice(0, MAX);
+  let html = shown.map((a, i) =>
+    '<button class="row" data-aid="' + a.id + '"><div class="body">' +
+    '<div class="title">' + esc(maskPl(disp(a.name), i)) + '</div>' +
+    '<div class="meta">' + esc(a.artists || '未知') + ' · ' + esc(a.company || '未标注厂牌') + ' · ' + (a.size || 0) + ' 首</div>' +
+    '</div><div class="tail">›</div></button>').join('');
+  if (list.length > MAX) html += '<div class="empty">仅显示前 ' + MAX + ' 张，请用搜索缩小范围</div>';
+  $('alist').innerHTML = html;
+  $('alist').querySelectorAll('[data-aid]').forEach(el => el.onclick = () => openDetail('al', Number(el.dataset.aid)));
 }
 
-async function openPlaylist(id, name){
-  currentId = id;
-  $('detailCard').hidden = false; $('mainCard').hidden = true;
-  $('detailTitle').textContent = name || '歌单';
-  $('detailMeta').textContent = '正在拉取曲目与厂牌…';
-  $('tracks').innerHTML = '<div class="empty">加载中…（曲目多时需要一会儿）</div>';
-  setState('exportState','');
+async function exportAlbums() {
+  if (!ALBUMS.length) { await loadAlbums(); if (!ALBUMS.length) return; }
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const head = '序号,专辑,艺人,曲目数,发行公司,发行时间,专辑ID\n';
+  const rows = ALBUMS.map((a, i) => {
+    const d = a.publishTime ? new Date(a.publishTime).toISOString().slice(0, 10) : '';
+    return [i + 1, q(a.name), q(a.artists), a.size, q(a.company), d, a.id].join(',');
+  }).join('\n');
   try {
-    const d = await inv('playlist_detail', { id });
-    const rows = d.rows || [];
-    $('detailTitle').textContent = d.name || name;
-    $('detailMeta').textContent = `曲目 ${d.count || rows.length} 首`;
-    $('tracks').innerHTML = rows.length ? rows.map((r,i) => {
-      const flag = r.ncr ? '<span class="badge">仅其他版本</span>' : '';
-      return `<div class="item"><span class="n">${i+1}. ${flag}${esc(disp(r.name))}<br><span style="color:var(--muted);font-size:12px">${esc(r.ar)} · ${esc(r.al)} · ${esc(r.company||'未标注厂牌')}</span></span><span class="c">${fmtDur(r.dur)}</span></div>`;
-    }).join('') : '<div class="empty">没有曲目</div>';
-  } catch (e) { $('detailMeta').textContent=''; $('tracks').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`; }
+    const r = await inv('save_text', { name: '表格/收藏专辑.csv', content: '\ufeff' + head + rows + '\n' });
+    $('zipState').textContent = '收藏专辑清单已导出：' + r.paths.join(' / ');
+  } catch (e) { $('zipState').textContent = '导出失败：' + e; }
 }
 
-/* ---------- 专辑详情 ---------- */
-let currentAlbum = 0;
-
-async function openAlbum(id, name) {
-  currentAlbum = id;
-  $('albumDetailCard').hidden = false; $('mainCard').hidden = true;
-  $('albumTitle').textContent = name || '专辑';
-  $('albumMeta').textContent = '正在拉取曲目…';
-  $('albumTracks').innerHTML = '<div class="empty">加载中…</div>';
-  setState('albumExportState', '');
-  try {
-    const d = await inv('album_detail', { id });
-    $('albumTitle').textContent = d.name || name;
-    const t = d.publishTime ? new Date(d.publishTime).toISOString().slice(0, 10) : '—';
-    $('albumMeta').textContent = `${d.artists || '未知'} · ${d.company || '未标注厂牌'} · ${t} · ${d.count} 首`;
-    const rows = d.rows || [];
-    $('albumTracks').innerHTML = rows.length ? rows.map((r, i) =>
-      `<div class="item"><span class="n">${i+1}. ${esc(disp(r.name))}<br><span style="color:var(--muted);font-size:12px">${esc(r.ar || d.artists)} · ${esc(r.al)}</span></span><span class="c">${fmtDur(r.dur)}</span></div>`
-    ).join('') : '<div class="empty">专辑没有曲目</div>';
-  } catch (e) {
-    $('albumMeta').textContent = '';
-    $('albumTracks').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`;
-  }
-}
-
-async function exportAlbum(format) {
-  if (!currentAlbum) return;
-  setState('albumExportState', '导出中…');
-  try {
-    const r = await inv('export_album', { id: currentAlbum, format });
-    setState('albumExportState', `已导出 ${r.count} 首：${r.paths.join(' / ')}`, 'ok');
-  } catch (e) { setState('albumExportState', '导出失败：' + e, 'err'); }
-}
+$('btnLoadAlbums').onclick = loadAlbums;
+$('btnAlbumCsv').onclick = exportAlbums;
+$('btnAlbumCsv2').onclick = exportAlbums;
+$('btnReloadAlbums').onclick = loadAlbums;
+$('btnAlbumZipHint').onclick = () => { $('zipState').textContent = '导出专辑曲目：先点开某张专辑，再用「导出 CSV / MD」'; showView('home'); };
+$('aq').oninput = e => { AL_Q = e.target.value.trim(); renderAlbums(); };
 
 /* ---------- 收藏歌单 ---------- */
 function renderFavlist() {
-  $('favlist').innerHTML = FAVLIST.length ? FAVLIST.map((p, i) =>
-    `<div class="item"><span class="n">${esc(maskPl(disp(p.name), i))}<br><span style="color:var(--muted);font-size:12px">${esc(p.creator || '未知作者')}</span></span><span class="c">${p.count} 首</span></div>`
-  ).join('') : '<div class="empty">没有收藏歌单</div>';
-  setState('favState', `共 ${FAVLIST.length} 个`, 'ok');
+  const el = $('favlist');
+  if (!el) return;
+  el.innerHTML = FAVLIST.length
+    ? FAVLIST.slice(0, 300).map((p, i) =>
+      '<button class="row" data-fid="' + p.id + '"><div class="body">' +
+      '<div class="title">' + esc(maskPl(disp(p.name), i)) + '</div>' +
+      '<div class="meta">' + esc(p.creator || '未知作者') + ' · ' + (p.count || 0) + ' 首</div></div>' +
+      '<div class="tail">›</div></button>').join('')
+    : '<div class="empty">没有收藏歌单</div>';
+  el.querySelectorAll('[data-fid]').forEach(x => x.onclick = () => openDetail('pl', Number(x.dataset.fid)));
+  setHint('favState', FAVLIST.length ? '共 ' + FAVLIST.length + ' 个' : '');
 }
 
 async function exportFavlist() {
   if (!FAVLIST.length) return;
-  const e = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
   const head = '序号,歌单,作者,曲目数,歌单ID\n';
-  const rows = FAVLIST.map((p, i) => [i + 1, e(p.name), e(p.creator), p.count, p.id].join(',')).join('\n');
+  const rows = FAVLIST.map((p, i) => [i + 1, q(p.name), q(p.creator), p.count, p.id].join(',')).join('\n');
   try {
     const r = await inv('save_text', { name: '表格/收藏歌单.csv', content: '\ufeff' + head + rows + '\n' });
-    setState('favState', '已导出：' + r.paths.join(' / '), 'ok');
-  } catch (e2) { setState('favState', '导出失败：' + e2, 'err'); }
+    setHint('favState', '已导出：' + r.paths.join(' / '));
+  } catch (e) { setHint('favState', '导出失败：' + e); }
 }
+$('btnFavRender').onclick = renderFavlist;
+$('btnFavCsv').onclick = exportFavlist;
+$('btnFavZip').onclick = () => setHint('favState', '收藏歌单只导出清单，曲目请点进歌单后导出');
 
-/* ---------- 导出 ---------- */
-async function exportOne(id, format){
-  return inv('export_playlist', { id, format });
-}
-
-async function exportAll(format){
-  if (!PLAYLISTS.length) return;
-  const btnCsv = $('btnAllCsv'), btnMd = $('btnAllMd');
-  btnCsv.disabled = true; btnMd.disabled = true;
-  $('batchBar').style.width = '0%';
-  let ok = 0, fail = 0;
-  const t0 = Date.now();
-  for (let i = 0; i < PLAYLISTS.length; i++) {
-    const p = PLAYLISTS[i];
-    const elapsed = Math.round((Date.now()-t0)/1000);
-    $('batchBar').style.width = Math.round((i / PLAYLISTS.length) * 100) + '%';
-    setState('batchState', `导出中 ${i+1}/${PLAYLISTS.length}：${p.name}（耗时 ${elapsed}s，成功 ${ok} 失败 ${fail}）`);
-    try { const r = await exportOne(p.id, format); accStats(r.stats); ok++; } catch (e) { fail++; }
-  }
-  $('batchBar').style.width = '100%';
-  setState('batchState', `完成：成功 ${ok}，失败 ${fail}，共 ${Math.round((Date.now()-t0)/1000)} 秒`, fail ? '' : 'ok');
-  btnCsv.disabled = false; btnMd.disabled = false;
-}
-
-/* ---------- 收藏专辑 ---------- */
-async function loadAlbums(){
-  $('albums').innerHTML = '<div class="empty">加载中…</div>';
-  try {
-    const r = await inv('collected_albums');
-    ALBUMS = r.items || [];
-    $('albums').innerHTML = ALBUMS.length ? ALBUMS.map((a,i) =>
-      `<div class="item" data-aid="${a.id}" data-aname="${esc(a.name)}" style="cursor:pointer"><span class="n">${i+1}. ${esc(disp(a.name))}<br><span style="color:var(--muted);font-size:12px">${esc(a.artists)} · ${esc(a.company||'未标注厂牌')}</span></span><span class="c">${a.size} 首 ›</span></div>`
-    ).join('') : '<div class="empty">没有收藏专辑</div>';
-    document.querySelectorAll('#albums [data-aid]').forEach(el => el.onclick = () => openAlbum(Number(el.dataset.aid), el.dataset.aname));
-    setState('albumState', `共 ${ALBUMS.length} 张`, 'ok');
-  } catch (e) { $('albums').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`; }
-}
-
-async function exportAlbums(){
-  if (!ALBUMS.length) return;
-  const head = '序号,专辑,艺人,曲目数,发行公司,发行时间,专辑ID\n';
-  const rows = ALBUMS.map((a,i) => {
-    const d = a.publishTime ? new Date(a.publishTime).toISOString().slice(0,10) : '';
-    const e = v => `"${String(v??'').replace(/"/g,'""')}"`;
-    return [i+1, e(a.name), e(a.artists), a.size, e(a.company), d, a.id].join(',');
-  }).join('\n');
-  try {
-    const r = await inv('save_text', { name: '表格/收藏专辑.csv', content: '\ufeff' + head + rows + '\n' });
-    setState('albumState', '已导出：' + r.paths.join(' / '), 'ok');
-  } catch (e) { setState('albumState', '导出失败：' + e, 'err'); }
-}
-
-/* ---------- 排行 ---------- */
-async function loadRank(week){
+/* ---------- 听歌排行 ---------- */
+async function loadRank(week) {
   RANK_WEEK = week;
-  document.querySelectorAll('#view-ranking .seg button').forEach(b => b.classList.toggle('on', (b.dataset.r === 'week') === week));
+  document.querySelectorAll('#rankSeg button').forEach(b => b.classList.toggle('on', (b.dataset.r === 'week') === week));
   $('ranking').innerHTML = '<div class="empty">加载中…</div>';
   try {
     const r = await inv('play_record', { uid, week });
     RANK = r.items || [];
-    $('ranking').innerHTML = RANK.length ? RANK.map(x =>
-      `<div class="item"><span class="n">${x.rank}. ${esc(x.name)}<br><span style="color:var(--muted);font-size:12px">${esc(x.ar)} · ${esc(x.al)}</span></span><span class="c">${x.playCount} 次</span></div>`
-    ).join('') : '<div class="empty">没有记录</div>';
-    setState('rankState', `共 ${RANK.length} 条`, 'ok');
-  } catch (e) { $('ranking').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`; }
+    $('ranking').innerHTML = RANK.length
+      ? RANK.map(x => '<div class="row"><div class="body"><div class="title">' + x.rank + '. ' + esc(disp(x.name)) + '</div>' +
+        '<div class="meta">' + esc(x.ar) + ' · ' + esc(x.al) + '</div></div>' +
+        '<div class="tail">' + x.playCount + ' 次</div></div>').join('')
+      : '<div class="empty">没有记录</div>';
+    $('rankMeta').textContent = RANK.length ? RANK.length + ' 条' : '';
+    setHint('rankState', '');
+  } catch (e) { $('ranking').innerHTML = '<div class="empty">加载失败：' + esc(e) + '</div>'; }
 }
 
-async function exportRank(){
+async function exportRank() {
   if (!RANK.length) return;
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
   const head = '排名,播放次数,歌名,制作人/团体,专辑,时长\n';
-  const e = v => `"${String(v??'').replace(/"/g,'""')}"`;
-  const rows = RANK.map(x => [x.rank, x.playCount, e(x.name), e(x.ar), e(x.al), fmtDur(x.dur)].join(',')).join('\n');
-  const name = `表格/听歌排行_${RANK_WEEK ? '最近一周' : '全部时间'}.csv`;
+  const rows = RANK.map(x => [x.rank, x.playCount, q(x.name), q(x.ar), q(x.al), fmtDur(x.dur)].join(',')).join('\n');
   try {
-    const r = await inv('save_text', { name, content: '\ufeff' + head + rows + '\n' });
-    setState('rankState', '已导出：' + r.paths.join(' / '), 'ok');
-  } catch (e) { setState('rankState', '导出失败：' + e, 'err'); }
+    const r = await inv('save_text', { name: '表格/听歌排行_' + (RANK_WEEK ? '最近一周' : '全部时间') + '.csv', content: '\ufeff' + head + rows + '\n' });
+    setHint('rankState', '已导出：' + r.paths.join(' / '));
+  } catch (e) { setHint('rankState', '导出失败：' + e); }
 }
-
-/* ---------- 视图切换 ---------- */
-function switchView(v){
-  currentView = v;
-  document.querySelectorAll('#mainTabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  ['playlists','albums','favlist','ranking','special'].forEach(k => { $('view-'+k).hidden = k !== v; });
-  if (v === 'favlist') renderFavlist();
-  if (v === 'special') renderSpecial();
-  if (v === 'albums' && !ALBUMS.length) loadAlbums();
-  if (v === 'ranking' && !RANK.length) loadRank(false);
-}
-
-/* ---------- 事件 ---------- */
-$('btnLogin').onclick = startQr;
-$('btnPhonePwd').onclick = () => runLogin('login_phone_password', { phone: $('phone').value, password: $('phonePwd').value });
-$('btnPhoneSms').onclick = () => runLogin('login_phone_captcha', { phone: $('phone').value, captcha: $('smsCode').value });
-$('btnEmail').onclick = () => runLogin('login_email', { email: $('email').value, password: $('emailPwd').value });
-$('btnCookie').onclick = () => runLogin('login_cookie', { cookie: $('cookieText').value });
-$('btnSmsSent').onclick = async () => {
-  const phone = $('phone').value.trim();
-  if (!phone) return setState('state','请先填手机号','err');
-  setState('state','发送中…');
-  try { const r = await inv('sms_sent', { phone }); setState('state', r.message || (r.ok?'已发送':'失败'), r.ok?'ok':'err'); }
-  catch (e) { setState('state', String(e), 'err'); }
-};
-$('btnRefresh').onclick = () => loadPlaylists();
-$('btnAllCsv').onclick = () => exportAll('csv');
-$('btnAllMd').onclick = () => exportAll('md');
-$('btnAlbumCsv').onclick = exportAlbums;
-$('btnFavCsv').onclick = exportFavlist;
-$('btnAlbumBack').onclick = () => { $('albumDetailCard').hidden = true; $('mainCard').hidden = false; currentAlbum = 0; };
-$('btnAlbumExportCsv').onclick = () => exportAlbum('csv');
-$('btnAlbumExportMd').onclick = () => exportAlbum('md');
-$('btnPrivacy').onclick = togglePrivacy;
-document.querySelectorAll('#dispModes button').forEach(b => b.onclick = () => setDisp(b.dataset.d));
+document.querySelectorAll('#rankSeg button').forEach(b => b.onclick = () => loadRank(b.dataset.r === 'week'));
+$('btnRankLoad').onclick = () => loadRank(RANK_WEEK);
 $('btnRankCsv').onclick = exportRank;
-$('btnZip').onclick = async () => {
-  setState('zipState','打包中…');
-  try { const r = await inv('zip_exports');
-    setState('zipState', `已打包 ${r.files} 个文件，${(r.size/1048576).toFixed(1)} MB\n${r.public || r.path}`, 'ok');
-  } catch (e) { setState('zipState','打包失败：'+e,'err'); }
-};
+$('btnRankZero').onclick = () => { RANK = []; $('ranking').innerHTML = '<div class="empty">点上方加载</div>'; setHint('rankState', ''); };
+
+/* ---------- 专项 ---------- */
 $('btnSpecialList').onclick = async () => {
   $('specialList').innerHTML = '<div class="empty">加载中…</div>';
   try {
     const r = await inv('special_items');
     const items = r.items || [];
-    $('specialList').innerHTML = items.length ? items.map((it,i) => {
-      const kinds = (it.kinds||[]).map(k => ({otherVersion:'其他版本',special:'特殊字符',nonLatin:'非拉丁'}[k]||k)).join(' / ');
-      return `<div class="item"><span class="n">${i+1}. ${esc(it.name)}<br><span style="color:var(--muted);font-size:12px">${esc(it.ar)} · ${esc(it.al)} · ${esc(it.company||'未标注厂牌')}</span></span><span class="c">${esc(kinds)}</span></div>`;
-    }).join('') : '<div class="empty">暂无明细，先导出歌单</div>';
-    setState('specialState', `共 ${r.total} 条`, 'ok');
-  } catch (e) { setState('specialState','加载失败：'+e,'err'); }
+    $('specialList').innerHTML = items.length
+      ? items.slice(0, 500).map((it, i) => {
+        const kinds = (it.kinds || []).map(k => ({ otherVersion: '其他版本', special: '特殊字符', nonLatin: '非拉丁' }[k] || k)).join(' / ');
+        return '<div class="track"><span class="idx">' + (i + 1) + '</span><div class="body">' +
+          '<div class="title">' + esc(disp(it.name)) + '</div>' +
+          '<div class="meta">' + esc(it.ar) + ' · ' + esc(it.al) + ' · ' + esc(it.company || '未标注厂牌') + ' · ' + esc(kinds) + '</div></div></div>';
+      }).join('')
+      : '<div class="empty">暂无明细，先导出歌单</div>';
+    setHint('specialState', '共 ' + r.total + ' 条');
+  } catch (e) { setHint('specialState', '加载失败：' + e); }
 };
 $('btnSpecialCsv').onclick = async () => {
-  try { const r = await inv('export_special'); setState('specialState','已导出：'+r.paths.join(' / '),'ok'); }
-  catch (e) { setState('specialState','导出失败：'+e,'err'); }
+  try { const r = await inv('export_special'); setHint('specialState', '已导出：' + r.paths.join(' / ')); }
+  catch (e) { setHint('specialState', '导出失败：' + e); }
 };
-$('btnResetStats').onclick = () => { ACC = { down: 0, otherVersion: 0, special: 0, nonLatin: 0, total: 0, playlists: 0 }; renderSpecial(); setState('specialState','已重置'); };
-$('btnBack').onclick = () => { $('detailCard').hidden = true; $('mainCard').hidden = false; };
-$('btnExportCsv').onclick = async () => {
-  if (!currentId) return;
-  setState('exportState','导出中…');
-  try { const r = await exportOne(currentId,'csv'); accStats(r.stats); setState('exportState','已导出 '+r.count+' 首：'+r.paths.join(' / '),'ok'); }
-  catch (e) { setState('exportState','导出失败：'+e,'err'); }
-};
-$('btnExportMd').onclick = async () => {
-  if (!currentId) return;
-  setState('exportState','导出中…');
-  try { const r = await exportOne(currentId,'md'); accStats(r.stats); setState('exportState','已导出 '+r.count+' 首：'+r.paths.join(' / '),'ok'); }
-  catch (e) { setState('exportState','导出失败：'+e,'err'); }
-};
+
+/* ---------- 账号操作 ---------- */
 $('btnLogout').onclick = async () => {
   await inv('logout');
-  $('loginCard').hidden = false; $('mainCard').hidden = true;
-  $('sub').textContent = '未登录'; setState('state','已退出登录');
+  nickname = ''; uid = 0; PLAYLISTS = []; FAVLIST = []; ALBUMS = []; RANK = [];
+  $('loginCard').hidden = false;
+  $('sub').textContent = '未登录';
+  renderHomeStats(); renderAccStats();
+  showView('home');
 };
-document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => switchLoginTab(b.dataset.m));
-document.querySelectorAll('#mainTabs button').forEach(b => b.onclick = () => switchView(b.dataset.v));
-document.querySelectorAll('#view-ranking .seg button').forEach(b => b.onclick = () => loadRank(b.dataset.r === 'week'));
-window.addEventListener('beforeunload', stopPoll);
+$('btnRelogin').onclick = () => { $('loginCard').hidden = false; showView('home'); switchLoginTab('qr'); };
 
-renderSpecial();
-checkAccount(true);
+/* ---------- 启动 ---------- */
+(function boot() {
+  let t = 'dark';
+  try { t = localStorage.getItem('ne.theme') || 'dark'; } catch (e) {}
+  applyTheme(t);
+  renderSpecial();
+  renderHomeStats();
+  checkAccount(true);
+})();
 </script>
 </body>
 </html>

@@ -1,0 +1,14 @@
+/* 与 PC 面板共享的样式：由 scripts/sync-ui.mjs 从 web/public/style.css 生成，勿手改 */
+.progress{height:4px;border-radius:2px;background:var(--bg-elev);overflow:hidden;margin:12px 0 6px}
+.progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+.banner{display:none}
+.banner.on{display:block}
+.banner.ok{background:#12281a;color:#8be3ae;border:0}
+[data-theme="light"] .banner.ok{background:#e9f7ee;color:#147a3e}
+#qrBox img{width:min(68vw,250px);margin:14px auto 0;background:#fff;padding:10px;border-radius:14px}
+.more{width:100%;padding:13px;background:var(--bg-elev);border:0;color:var(--accent);font-weight:600;font-size:13.5px;border-radius:12px;margin-top:10px;font-family:inherit}
+.grow{flex:1;min-width:0}
+.stack > * + *{margin-top:10px}
+.badge{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent);margin-right:6px;font-weight:500}
+.track .tail{font-size:12px;color:var(--muted);flex:0 0 auto;align-self:flex-start;margin-top:2px}
+.row .tail{white-space:nowrap}

@@ -1,6 +1,6 @@
 {
   "name": "netease-export",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "private": true,
   "type": "module",
   "description": "网易云歌单 / 收藏导出与本地面板",
@@ -18,7 +18,9 @@
     "build": "node build.mjs",
     "tauri": "tauri",
     "dist:android": "tauri android build --apk",
-    "android:init": "tauri android init --ci"
+    "android:init": "tauri android init --ci",
+    "sync:ui": "node scripts/sync-ui.mjs",
+    "test:ui": "node scripts/ui-check.mjs"
   },
   "build": {
     "appId": "app.xvsvt.netease.export",

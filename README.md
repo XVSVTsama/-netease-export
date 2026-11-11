@@ -4,7 +4,7 @@
 
 只做导出与整理：不提供播放、不代理音频、不绕过任何付费或版权限制。
 
-当前版本：**1.3.1**（PC 便携化 + 双端任务链跨平台 + Android 固定签名）
+当前版本：**1.4.0**（Android 界面与 PC 面板统一，共用同一份样式）
 
 ---
 
@@ -13,7 +13,7 @@
 | 形态 | 后端 | 外壳 | 产物 | 数据落在 |
 | --- | --- | --- | --- | --- |
 | Windows 便携版 | Node（`web/` + `*.mjs`） | Electron（`main.cjs`） | 免安装文件夹 | exe 同级目录 |
-| Android | Rust（`src-tauri/`） | Tauri 2 + WebView（`ui/`） | 单个 APK | 应用私有目录 |
+| Android | Rust（`src-tauri/`） | Tauri 2 + WebView（`ui/`，样式取自 `web/public/style.css`） | 单个 APK | 应用私有目录 |
 
 两端功能对齐，导出的目录结构、CSV 字段一致：
 
@@ -129,6 +129,8 @@ npx tauri android build --apk --target aarch64
 
 需要 JDK 17 + Android SDK + NDK 26 + Rust `aarch64-linux-android`。CI 已配好全流程与签名。
 
+界面样式与 PC 面板共用一份：`ui/style.css` 是 `web/public/style.css` 的生成副本，构建前由 `beforeBuildCommand`（`npm run sync:ui`）自动覆盖，不要手改 `ui/style.css`；改样式只改 `web/public/style.css`。`npm run test:ui` 用假 DOM 跑一遍 `ui/index.html` 的脚本，确认没有解析错误、所有按钮都绑定了事件。
+
 ## 目录
 
 ```
@@ -140,7 +142,8 @@ build.mjs              发布：重建文档 → 打包 zip → 核验 → 原�
 runner.mjs             任务链执行器（直接用当前运行时跑脚本，不经 sh）
 *.mjs                  抓取与整理脚本（export/sync/fav/cpl/cal/merge/check/enrich/stage/covers）
 src-tauri/             Rust 后端（Android）
-ui/                    Tauri 前端（Android）
+ui/                    Tauri 前端（Android）：index.html + extra.css + 生成的 style.css
+scripts/               sync-ui.mjs（样式同步）、ui-check.mjs（假 DOM 界面自检）
 signing/               Android 固定签名密钥（key.pk8 + cert.pem）
 .github/workflows/     build-win.yml、build-android.yml
 ```
