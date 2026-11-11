@@ -8,6 +8,9 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+      ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
     steps:
       - uses: actions/checkout@v4
 
@@ -18,12 +21,15 @@ jobs:
       - name: 安装依赖
         run: npm install --no-audit --no-fund
 
-      - name: 打包 Windows 便携版
+      - name: 构建绿色版目录
         run: npm run dist:win
 
-      - name: 上传产物
-        uses: actions/upload-artifact@v4
+      - name: 打包为 zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/win-unpacked/* -DestinationPath netease-export-windows.zip
+
+      - uses: actions/upload-artifact@v4
         with:
           name: netease-export-windows
-          path: dist/*.exe
+          path: netease-export-windows.zip
           if-no-files-found: error
