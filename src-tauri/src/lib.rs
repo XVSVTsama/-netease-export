@@ -201,6 +201,38 @@ fn json_saved(paths: Vec<String>, count: i64) -> Value {
     serde_json::json!({ "ok": true, "paths": paths, "count": count })
 }
 
+#[tauri::command]
+async fn collected_albums(state: State<'_, AppState>) -> Result<Value, String> {
+    api::collected_albums(&state.client).await
+}
+
+#[tauri::command]
+async fn play_record(state: State<'_, AppState>, uid: i64, week: bool) -> Result<Value, String> {
+    api::play_record(&state.client, uid, week).await
+}
+
+/// 通用保存：把前端生成的文本写入文件
+#[tauri::command]
+async fn save_text(app: tauri::AppHandle, name: String, content: String) -> Result<Value, String> {
+    let file = sanitize(&name);
+    let mut saved: Vec<String> = Vec::new();
+    if let Ok(dir) = app.path().app_data_dir() {
+        let out = dir.join("exports");
+        let _ = fs::create_dir_all(&out);
+        let p = out.join(&file);
+        if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); }
+    }
+    for base in ["/storage/emulated/0/Download/网易云导出", "/sdcard/Download/网易云导出"] {
+        let dir = std::path::Path::new(base);
+        if fs::create_dir_all(dir).is_ok() {
+            let p = dir.join(&file);
+            if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); break; }
+        }
+    }
+    if saved.is_empty() { return Err("写入文件失败".into()); }
+    Ok(serde_json::json!({ "ok": true, "paths": saved }))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let client = Arc::new(Client::new());
@@ -221,7 +253,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             qr_new, qr_poll, account, playlists, playlist_detail,
             login_cookie, login_phone_password, sms_sent, login_phone_captcha,
-            login_email, logout, export_playlist
+            login_email, logout, export_playlist, collected_albums, play_record, save_text
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

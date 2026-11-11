@@ -13,11 +13,12 @@ html,body{margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",system-ui,sans-serif;
   padding:calc(16px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));min-height:100vh}
 h1{font-size:24px;margin:0 0 4px;letter-spacing:-.02em}
-.sub{color:var(--muted);font-size:13px;margin-bottom:16px;word-break:break-all}
+.sub{color:var(--muted);font-size:13px;margin-bottom:14px;word-break:break-all}
 .card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
 .card h2{font-size:15px;margin:0 0 10px;font-weight:600}
 button{padding:12px 16px;border-radius:12px;border:0;background:var(--accent);color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;min-height:44px}
 button.ghost{background:var(--bg);color:var(--text);border:1px solid var(--line)}
+button.small{padding:8px 12px;min-height:34px;font-size:13px}
 button:disabled{opacity:.4}
 input,textarea{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:15px/1.4 inherit;font-family:inherit;outline:none}
 textarea{min-height:88px;resize:vertical;font-size:13px}
@@ -25,7 +26,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .row > *{flex:1}
 .row > button{flex:0 0 auto}
-.seg{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;padding-bottom:2px}
+.seg{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px}
 .seg button{flex:1 0 auto;padding:9px 14px;border-radius:999px;background:var(--bg);color:var(--muted);border:1px solid var(--line);font-size:13.5px;min-height:38px}
 .seg button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 .field{margin-bottom:8px}
@@ -34,7 +35,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .state{font-size:13px;min-height:20px;text-align:center;color:var(--muted);margin-top:6px}
 .state.err{color:var(--accent)}
 .state.ok{color:var(--ok)}
-.list{max-height:min(52vh,420px);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.list{max-height:min(48vh,400px);overflow-y:auto;-webkit-overflow-scrolling:touch}
 .item{display:flex;justify-content:space-between;gap:10px;padding:11px 2px;border-top:1px solid var(--line);font-size:14px}
 .item:first-child{border-top:0}
 .item .n{flex:1;word-break:break-word}
@@ -56,54 +57,87 @@ input:focus,textarea:focus{border-color:var(--accent)}
     <button data-m="email">邮箱</button>
     <button data-m="cookie">Cookie</button>
   </div>
-
   <div id="pane-qr">
     <div class="row"><button id="btnLogin">生成二维码</button></div>
     <div id="qrBox" class="qr-wrap"></div>
-    <div class="hint">手机网易云扫码后需在手机上点「确认登录」<br>若提示设备环境异常，改用 Cookie 方式</div>
+    <div class="hint">扫码后需在手机端确认；若提示环境异常，改用 Cookie</div>
   </div>
-
   <div id="pane-phone" hidden>
     <div class="field"><input id="phone" inputmode="numeric" placeholder="手机号"></div>
     <div class="field"><input id="phonePwd" type="password" placeholder="密码"></div>
     <div class="row"><button class="ghost" id="btnPhonePwd">密码登录</button></div>
-    <div class="hint">或使用短信验证码</div>
-    <div class="row" style="margin-top:6px">
+    <div class="row" style="margin-top:8px">
       <input id="smsCode" inputmode="numeric" placeholder="短信验证码">
       <button class="ghost" id="btnSmsSent">获取</button>
     </div>
     <div class="row" style="margin-top:8px"><button id="btnPhoneSms">验证码登录</button></div>
   </div>
-
   <div id="pane-email" hidden>
     <div class="field"><input id="email" inputmode="email" placeholder="邮箱"></div>
     <div class="field"><input id="emailPwd" type="password" placeholder="密码"></div>
     <button id="btnEmail">邮箱登录</button>
   </div>
-
   <div id="pane-cookie" hidden>
-    <div class="field"><textarea id="cookieText" placeholder="粘贴 MUSIC_U=... 或直接粘贴 MUSIC_U 的值"></textarea></div>
+    <div class="field"><textarea id="cookieText" placeholder="粘贴 MUSIC_U=... 或只贴 MUSIC_U 的值"></textarea></div>
     <div class="row"><button id="btnCookie">用 Cookie 登录</button></div>
-    <div class="hint">最稳的方式：直接从已登录的客户端或浏览器复制，不受扫码风控影响</div>
+    <div class="hint">最稳的方式，不受扫码风控影响</div>
   </div>
-
   <div class="state" id="state"></div>
 </section>
 
-<section class="card" id="listCard" hidden>
-  <div class="row" style="justify-content:space-between;margin-bottom:8px">
-    <h2 style="margin:0">我的歌单</h2>
-    <button class="ghost" id="btnRefresh" style="padding:8px 14px;min-height:36px;font-size:13.5px;flex:0 0 auto">刷新</button>
+<section class="card" id="mainCard" hidden>
+  <div class="seg" id="mainTabs">
+    <button data-v="playlists" class="on">歌单</button>
+    <button data-v="albums">收藏专辑</button>
+    <button data-v="ranking">听歌排行</button>
   </div>
-  <div class="list" id="list"><div class="empty">加载中…</div></div>
-  <div class="row" style="margin-top:10px"><button class="ghost" id="btnLogout">退出登录</button></div>
+
+  <!-- 歌单 -->
+  <div id="view-playlists">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h2 style="margin:0;flex:1">我的歌单</h2>
+      <button class="ghost small" id="btnRefresh">刷新</button>
+    </div>
+    <div class="list" id="list"><div class="empty">加载中…</div></div>
+    <div class="row" style="margin-top:10px">
+      <button id="btnAllCsv">全部导出 CSV</button>
+      <button class="ghost" id="btnAllMd">全部导出 MD</button>
+    </div>
+    <div class="state" id="batchState"></div>
+  </div>
+
+  <!-- 收藏专辑 -->
+  <div id="view-albums" hidden>
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h2 style="margin:0;flex:1">收藏专辑</h2>
+      <button class="ghost small" id="btnAlbumCsv">导出 CSV</button>
+    </div>
+    <div class="list" id="albums"><div class="empty">点上方「收藏专辑」加载</div></div>
+    <div class="state" id="albumState"></div>
+  </div>
+
+  <!-- 排行 -->
+  <div id="view-ranking" hidden>
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h2 style="margin:0;flex:1">听歌排行</h2>
+      <button class="ghost small" id="btnRankCsv">导出 CSV</button>
+    </div>
+    <div class="seg" style="margin-bottom:8px">
+      <button data-r="all" class="on">全部时间</button>
+      <button data-r="week">最近一周</button>
+    </div>
+    <div class="list" id="ranking"><div class="empty">点上方「听歌排行」加载</div></div>
+    <div class="state" id="rankState"></div>
+  </div>
+
+  <div class="row" style="margin-top:12px"><button class="ghost" id="btnLogout">退出登录</button></div>
 </section>
 
 <section class="card" id="detailCard" hidden>
   <div class="row" style="justify-content:space-between;margin-bottom:6px">
-    <button class="ghost" id="btnBack" style="padding:8px 12px;min-height:34px;font-size:13px;flex:0 0 auto">← 返回</button>
-    <button class="ghost" id="btnExportCsv" style="padding:8px 12px;min-height:34px;font-size:13px;flex:0 0 auto">导出 CSV</button>
-    <button class="ghost" id="btnExportMd" style="padding:8px 12px;min-height:34px;font-size:13px;flex:0 0 auto">导出 MD</button>
+    <button class="ghost small" id="btnBack">← 返回</button>
+    <button class="ghost small" id="btnExportCsv">导出 CSV</button>
+    <button class="ghost small" id="btnExportMd">导出 MD</button>
   </div>
   <h2 id="detailTitle" style="margin:0 0 2px">歌单</h2>
   <div class="sub" id="detailMeta" style="margin:0 0 8px"></div>
@@ -117,104 +151,187 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 let uid = 0, nickname = '', pollTimer = null, busy = false;
+let PLAYLISTS = [], ALBUMS = [], RANK = [], RANK_WEEK = false, currentView = 'playlists', currentId = 0;
 
-function setState(text, kind = '') {
-  const el = $('state');
-  el.textContent = text || '';
-  el.className = 'state' + (kind ? ' ' + kind : '');
-}
-function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+const fmtDur = ms => { if (!ms || ms <= 0) return '--:--'; const t = Math.round(ms/1000); return `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`; };
+const setState = (id, text, kind='') => { const el = $(id); if (!el) return; el.textContent = text || ''; el.className = 'state' + (kind ? ' ' + kind : ''); };
 
-function switchTab(m) {
+function stopPoll(){ if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+/* ---------- 登录 ---------- */
+function switchLoginTab(m){
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
-  ['qr', 'phone', 'email', 'cookie'].forEach(k => { $('pane-' + k).hidden = k !== m; });
-  setState('');
+  ['qr','phone','email','cookie'].forEach(k => { $('pane-'+k).hidden = k !== m; });
+  setState('state','');
 }
 
-async function afterLogin() {
-  stopPoll();
-  setState('登录成功', 'ok');
-  setTimeout(() => checkAccount(), 300);
-}
+async function afterLogin(){ stopPoll(); setState('state','登录成功','ok'); setTimeout(()=>checkAccount(), 300); }
 
-async function checkAccount(silent = false) {
+async function checkAccount(silent=false){
   try {
     const a = await inv('account');
     if (a.logged) {
       uid = a.uid || 0; nickname = a.nickname || '';
-      $('sub').textContent = nickname ? `已登录：${nickname}（uid ${uid}）` : `已登录（uid ${uid}）`;
-      $('loginCard').hidden = true;
-      $('listCard').hidden = false;
+      $('sub').textContent = `已登录：${nickname}（uid ${uid}）`;
+      $('loginCard').hidden = true; $('mainCard').hidden = false;
       await loadPlaylists(silent);
     } else {
       $('sub').textContent = '未登录';
-      $('loginCard').hidden = false;
-      $('listCard').hidden = true;
+      $('loginCard').hidden = false; $('mainCard').hidden = true;
     }
   } catch (e) {
     $('sub').textContent = '未登录';
-    if (!silent) setState('检查登录态失败：' + e, 'err');
+    if (!silent) setState('state','检查登录态失败：'+e,'err');
   }
 }
 
-async function loadPlaylists(silent = false) {
+async function startQr(){
+  if (busy) return;
+  busy = true; $('btnLogin').disabled = true; stopPoll(); $('qrBox').innerHTML = '';
+  setState('state','正在生成二维码…');
+  try {
+    const q = await inv('qr_new');
+    $('qrBox').innerHTML = `<img src="${q.img}" alt="二维码">`;
+    setState('state','等待扫码…');
+    pollTimer = setInterval(async () => {
+      try {
+        const s = await inv('qr_poll');
+        if (s.code === 802) setState('state','已扫码，请在手机上确认…');
+        else if (s.code === 803) { await afterLogin(); $('qrBox').innerHTML=''; }
+        else if (s.code === 800 || s.code === 8821) { stopPoll(); $('qrBox').innerHTML=''; setState('state','二维码失效或被风控，建议用 Cookie 登录','err'); }
+      } catch (e) { stopPoll(); setState('state','轮询失败：'+e,'err'); }
+    }, 2000);
+  } catch (e) { setState('state','生成二维码失败：'+e,'err'); }
+  finally { busy = false; $('btnLogin').disabled = false; }
+}
+
+async function runLogin(cmd, args){
+  setState('state','登录中…');
+  try { const r = await inv(cmd, args||{}); if (r && r.ok) await afterLogin(); else setState('state','登录失败','err'); }
+  catch (e) { setState('state', String(e), 'err'); }
+}
+
+/* ---------- 歌单 ---------- */
+async function loadPlaylists(silent=false){
   if (!silent) $('list').innerHTML = '<div class="empty">加载中…</div>';
   try {
     const r = await inv('playlists', { uid });
-    const items = r.items || [];
-    $('list').innerHTML = items.length ? items.map(p => {
+    PLAYLISTS = r.items || [];
+    $('list').innerHTML = PLAYLISTS.length ? PLAYLISTS.map(p => {
       const tags = [];
       if (!p.mine) tags.push('<span class="badge">收藏</span>');
       if (p.privacy === 10) tags.push('<span class="badge">私密</span>');
       return `<div class="item" data-id="${p.id}" data-name="${esc(p.name)}" style="cursor:pointer"><span class="n">${tags.join('')}${esc(p.name)}</span><span class="c">${p.count} 首 ›</span></div>`;
-    }).join('') : '<div class="empty">这个账号下没有歌单</div>';
-    document.querySelectorAll('#list [data-id]').forEach(el => {
-      el.onclick = () => openPlaylist(Number(el.dataset.id), el.dataset.name);
-    });
-    $('sub').textContent = (nickname ? `已登录：${nickname}（uid ${uid}）` : `已登录（uid ${uid}）`) + ` · 共 ${r.total} 个歌单`;
-  } catch (e) {
-    $('list').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`;
-  }
+    }).join('') : '<div class="empty">没有歌单</div>';
+    document.querySelectorAll('#list [data-id]').forEach(el => el.onclick = () => openPlaylist(Number(el.dataset.id), el.dataset.name));
+    $('sub').textContent = `已登录：${nickname}（uid ${uid}）· 歌单 ${r.total} 个`;
+  } catch (e) { $('list').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`; }
 }
 
-async function startQr() {
-  if (busy) return;
-  busy = true; $('btnLogin').disabled = true; stopPoll();
-  $('qrBox').innerHTML = '';
-  setState('正在生成二维码…');
+async function openPlaylist(id, name){
+  currentId = id;
+  $('detailCard').hidden = false; $('mainCard').hidden = true;
+  $('detailTitle').textContent = name || '歌单';
+  $('detailMeta').textContent = '正在拉取曲目与厂牌…';
+  $('tracks').innerHTML = '<div class="empty">加载中…（曲目多时需要一会儿）</div>';
+  setState('exportState','');
   try {
-    const q = await inv('qr_new');
-    $('qrBox').innerHTML = `<img src="${q.img}" alt="登录二维码">`;
-    setState('等待扫码…');
-    pollTimer = setInterval(async () => {
-      try {
-        const s = await inv('qr_poll');
-        if (s.code === 802) setState('已扫码，请在手机上确认…');
-        else if (s.code === 803) { await afterLogin(); $('qrBox').innerHTML = ''; }
-        else if (s.code === 800 || s.code === 8821) {
-          stopPoll(); $('qrBox').innerHTML = '';
-          setState('二维码失效或被风控拦截，建议改用 Cookie 登录', 'err');
-        }
-      } catch (e) { stopPoll(); setState('轮询失败：' + e, 'err'); }
-    }, 2000);
-  } catch (e) {
-    setState('生成二维码失败：' + e, 'err');
-  } finally {
-    busy = false; $('btnLogin').disabled = false;
-  }
+    const d = await inv('playlist_detail', { id });
+    const rows = d.rows || [];
+    $('detailTitle').textContent = d.name || name;
+    $('detailMeta').textContent = `曲目 ${d.count || rows.length} 首`;
+    $('tracks').innerHTML = rows.length ? rows.map((r,i) => {
+      const flag = r.ncr ? '<span class="badge">仅其他版本</span>' : '';
+      return `<div class="item"><span class="n">${i+1}. ${flag}${esc(r.name)}<br><span style="color:var(--muted);font-size:12px">${esc(r.ar)} · ${esc(r.al)} · ${esc(r.company||'未标注厂牌')}</span></span><span class="c">${fmtDur(r.dur)}</span></div>`;
+    }).join('') : '<div class="empty">没有曲目</div>';
+  } catch (e) { $('detailMeta').textContent=''; $('tracks').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`; }
 }
 
-async function runLogin(cmd, args) {
-  setState('登录中…');
+/* ---------- 导出 ---------- */
+async function exportOne(id, format){
+  return inv('export_playlist', { id, format });
+}
+
+async function exportAll(format){
+  if (!PLAYLISTS.length) return;
+  const btnCsv = $('btnAllCsv'), btnMd = $('btnAllMd');
+  btnCsv.disabled = true; btnMd.disabled = true;
+  let ok = 0, fail = 0;
+  const t0 = Date.now();
+  for (let i = 0; i < PLAYLISTS.length; i++) {
+    const p = PLAYLISTS[i];
+    const elapsed = Math.round((Date.now()-t0)/1000);
+    setState('batchState', `导出中 ${i+1}/${PLAYLISTS.length}：${p.name}（耗时 ${elapsed}s，成功 ${ok} 失败 ${fail}）`);
+    try { await exportOne(p.id, format); ok++; } catch (e) { fail++; }
+  }
+  setState('batchState', `完成：成功 ${ok}，失败 ${fail}，共 ${Math.round((Date.now()-t0)/1000)} 秒`, fail ? '' : 'ok');
+  btnCsv.disabled = false; btnMd.disabled = false;
+}
+
+/* ---------- 收藏专辑 ---------- */
+async function loadAlbums(){
+  $('albums').innerHTML = '<div class="empty">加载中…</div>';
   try {
-    const r = await inv(cmd, args || {});
-    if (r && r.ok) await afterLogin();
-    else setState('登录失败', 'err');
-  } catch (e) {
-    setState(String(e), 'err');
-  }
+    const r = await inv('collected_albums');
+    ALBUMS = r.items || [];
+    $('albums').innerHTML = ALBUMS.length ? ALBUMS.map((a,i) =>
+      `<div class="item"><span class="n">${i+1}. ${esc(a.name)}<br><span style="color:var(--muted);font-size:12px">${esc(a.artists)} · ${esc(a.company||'未标注厂牌')}</span></span><span class="c">${a.size} 首</span></div>`
+    ).join('') : '<div class="empty">没有收藏专辑</div>';
+    setState('albumState', `共 ${ALBUMS.length} 张`, 'ok');
+  } catch (e) { $('albums').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`; }
 }
 
+async function exportAlbums(){
+  if (!ALBUMS.length) return;
+  const head = '序号,专辑,艺人,曲目数,发行公司,发行时间,专辑ID\n';
+  const rows = ALBUMS.map((a,i) => {
+    const d = a.publishTime ? new Date(a.publishTime).toISOString().slice(0,10) : '';
+    const e = v => `"${String(v??'').replace(/"/g,'""')}"`;
+    return [i+1, e(a.name), e(a.artists), a.size, e(a.company), d, a.id].join(',');
+  }).join('\n');
+  try {
+    const r = await inv('save_text', { name: '收藏专辑.csv', content: '\ufeff' + head + rows + '\n' });
+    setState('albumState', '已导出：' + r.paths.join(' / '), 'ok');
+  } catch (e) { setState('albumState', '导出失败：' + e, 'err'); }
+}
+
+/* ---------- 排行 ---------- */
+async function loadRank(week){
+  RANK_WEEK = week;
+  document.querySelectorAll('#view-ranking .seg button').forEach(b => b.classList.toggle('on', (b.dataset.r === 'week') === week));
+  $('ranking').innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const r = await inv('play_record', { uid, week });
+    RANK = r.items || [];
+    $('ranking').innerHTML = RANK.length ? RANK.map(x =>
+      `<div class="item"><span class="n">${x.rank}. ${esc(x.name)}<br><span style="color:var(--muted);font-size:12px">${esc(x.ar)} · ${esc(x.al)}</span></span><span class="c">${x.playCount} 次</span></div>`
+    ).join('') : '<div class="empty">没有记录</div>';
+    setState('rankState', `共 ${RANK.length} 条`, 'ok');
+  } catch (e) { $('ranking').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`; }
+}
+
+async function exportRank(){
+  if (!RANK.length) return;
+  const head = '排名,播放次数,歌名,制作人/团体,专辑,时长\n';
+  const e = v => `"${String(v??'').replace(/"/g,'""')}"`;
+  const rows = RANK.map(x => [x.rank, x.playCount, e(x.name), e(x.ar), e(x.al), fmtDur(x.dur)].join(',')).join('\n');
+  const name = `听歌排行_${RANK_WEEK ? '最近一周' : '全部时间'}.csv`;
+  try {
+    const r = await inv('save_text', { name, content: '\ufeff' + head + rows + '\n' });
+    setState('rankState', '已导出：' + r.paths.join(' / '), 'ok');
+  } catch (e) { setState('rankState', '导出失败：' + e, 'err'); }
+}
+
+/* ---------- 视图切换 ---------- */
+function switchView(v){
+  currentView = v;
+  document.querySelectorAll('#mainTabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  ['playlists','albums','ranking'].forEach(k => { $('view-'+k).hidden = k !== v; });
+  if (v === 'albums' && !ALBUMS.length) loadAlbums();
+  if (v === 'ranking' && !RANK.length) loadRank(false);
+}
+
+/* ---------- 事件 ---------- */
 $('btnLogin').onclick = startQr;
 $('btnPhonePwd').onclick = () => runLogin('login_phone_password', { phone: $('phone').value, password: $('phonePwd').value });
 $('btnPhoneSms').onclick = () => runLogin('login_phone_captcha', { phone: $('phone').value, captcha: $('smsCode').value });
@@ -222,73 +339,39 @@ $('btnEmail').onclick = () => runLogin('login_email', { email: $('email').value,
 $('btnCookie').onclick = () => runLogin('login_cookie', { cookie: $('cookieText').value });
 $('btnSmsSent').onclick = async () => {
   const phone = $('phone').value.trim();
-  if (!phone) return setState('请先填手机号', 'err');
-  setState('发送中…');
-  try {
-    const r = await inv('sms_sent', { phone });
-    setState(r.message || (r.ok ? '验证码已发送' : '发送失败'), r.ok ? 'ok' : 'err');
-  } catch (e) { setState(String(e), 'err'); }
+  if (!phone) return setState('state','请先填手机号','err');
+  setState('state','发送中…');
+  try { const r = await inv('sms_sent', { phone }); setState('state', r.message || (r.ok?'已发送':'失败'), r.ok?'ok':'err'); }
+  catch (e) { setState('state', String(e), 'err'); }
 };
-let currentId = 0;
-
-async function openPlaylist(id, name) {
-  currentId = id;
-  $('detailCard').hidden = false;
-  $('listCard').hidden = true;
-  $('detailTitle').textContent = name || '歌单';
-  $('detailMeta').textContent = '正在拉取曲目与厂牌…';
-  $('tracks').innerHTML = '<div class="empty">加载中…（曲目多时需要一会儿）</div>';
-  $('exportState').textContent = '';
-  try {
-    const d = await inv('playlist_detail', { id });
-    const rows = d.rows || [];
-    $('detailTitle').textContent = d.name || name || '歌单';
-    $('detailMeta').textContent = `本地曲目 ${d.count || rows.length} 首`;
-    $('tracks').innerHTML = rows.length ? rows.map((r, i) => {
-      const flag = r.ncr ? '<span class="badge">仅其他版本</span>' : '';
-      return `<div class="item"><span class="n">${i + 1}. ${flag}${esc(r.name)}<br><span style="color:var(--muted);font-size:12px">${esc(r.ar)} · ${esc(r.al)} · ${esc(r.company || '未标注厂牌')}</span></span><span class="c">${fmtDur(r.dur)}</span></div>`;
-    }).join('') : '<div class="empty">这个歌单没有曲目</div>';
-  } catch (e) {
-    $('detailMeta').textContent = '';
-    $('tracks').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`;
-  }
-}
-
-function fmtDur(ms) {
-  if (!ms || ms <= 0) return '--:--';
-  const t = Math.round(ms / 1000);
-  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
-}
-
-async function doExport(format) {
-  if (!currentId) return;
-  $('exportState').textContent = '导出中…';
-  $('exportState').className = 'state';
-  $('btnExportCsv').disabled = true; $('btnExportMd').disabled = true;
-  try {
-    const r = await inv('export_playlist', { id: currentId, format });
-    $('exportState').className = 'state ok';
-    $('exportState').innerHTML = `已导出 ${r.count} 首<br>` + r.paths.map(p => `<span style="font-size:12px">${esc(p)}</span>`).join('<br>');
-  } catch (e) {
-    $('exportState').className = 'state err';
-    $('exportState').textContent = '导出失败：' + e;
-  } finally {
-    $('btnExportCsv').disabled = false; $('btnExportMd').disabled = false;
-  }
-}
-
-$('btnBack').onclick = () => { $('detailCard').hidden = true; $('listCard').hidden = false; currentId = 0; };
-$('btnExportCsv').onclick = () => doExport('csv');
-$('btnExportMd').onclick = () => doExport('md');
 $('btnRefresh').onclick = () => loadPlaylists();
+$('btnAllCsv').onclick = () => exportAll('csv');
+$('btnAllMd').onclick = () => exportAll('md');
+$('btnAlbumCsv').onclick = exportAlbums;
+$('btnRankCsv').onclick = exportRank;
+$('btnBack').onclick = () => { $('detailCard').hidden = true; $('mainCard').hidden = false; };
+$('btnExportCsv').onclick = async () => {
+  if (!currentId) return;
+  setState('exportState','导出中…');
+  try { const r = await exportOne(currentId,'csv'); setState('exportState','已导出 '+r.count+' 首：'+r.paths.join(' / '),'ok'); }
+  catch (e) { setState('exportState','导出失败：'+e,'err'); }
+};
+$('btnExportMd').onclick = async () => {
+  if (!currentId) return;
+  setState('exportState','导出中…');
+  try { const r = await exportOne(currentId,'md'); setState('exportState','已导出 '+r.count+' 首：'+r.paths.join(' / '),'ok'); }
+  catch (e) { setState('exportState','导出失败：'+e,'err'); }
+};
 $('btnLogout').onclick = async () => {
   await inv('logout');
-  $('loginCard').hidden = false; $('listCard').hidden = true;
-  $('sub').textContent = '未登录';
-  setState('已退出登录');
+  $('loginCard').hidden = false; $('mainCard').hidden = true;
+  $('sub').textContent = '未登录'; setState('state','已退出登录');
 };
-document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => switchTab(b.dataset.m));
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => switchLoginTab(b.dataset.m));
+document.querySelectorAll('#mainTabs button').forEach(b => b.onclick = () => switchView(b.dataset.v));
+document.querySelectorAll('#view-ranking .seg button').forEach(b => b.onclick = () => loadRank(b.dataset.r === 'week'));
 window.addEventListener('beforeunload', stopPoll);
+
 checkAccount(true);
 </script>
 </body>

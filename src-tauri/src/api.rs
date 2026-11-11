@@ -211,3 +211,48 @@ pub async fn playlist_detail(c: &Client, id: i64) -> Result<Value, String> {
         "rows": rows,
     }))
 }
+
+/* ---------------- 收藏专辑 ---------------- */
+
+pub async fn collected_albums(c: &Client) -> Result<Value, String> {
+    let mut items = Vec::new();
+    let mut offset = 0;
+    loop {
+        let r = c.weapi("/weapi/album/sublist", json!({ "limit": 25, "offset": offset, "total": true })).await?;
+        let arr = r["data"].as_array().or_else(|| r["albums"].as_array()).cloned().unwrap_or_default();
+        if arr.is_empty() { break; }
+        for a in &arr {
+            items.push(json!({
+                "id": a["id"].as_i64().unwrap_or(0),
+                "name": a["name"].as_str().unwrap_or(""),
+                "artists": a["artists"].as_array()
+                    .map(|x| x.iter().filter_map(|y| y["name"].as_str()).collect::<Vec<_>>().join(" / "))
+                    .unwrap_or_default(),
+                "size": a["size"].as_i64().unwrap_or(0),
+                "company": a["company"].as_str().unwrap_or(""),
+                "publishTime": a["publishTime"].as_i64().unwrap_or(0),
+            }));
+        }
+        if r["hasMore"].as_bool() != Some(true) || arr.len() < 25 { break; }
+        offset += 25;
+    }
+    Ok(json!({ "total": items.len(), "items": items }))
+}
+
+/* ---------------- 听歌排行 ---------------- */
+
+pub async fn play_record(c: &Client, uid: i64, week: bool) -> Result<Value, String> {
+    let r = c.weapi("/weapi/v1/play/record", json!({ "uid": uid, "type": if week { 1 } else { 0 } })).await?;
+    let arr = if week { r["weekData"].as_array() } else { r["allData"].as_array() }.cloned().unwrap_or_default();
+    let mut out = Vec::new();
+    for (i, it) in arr.iter().enumerate() {
+        let s = &it["song"];
+        let (name, ar, al, al_id, dur, _ncr) = song_of_album(s);
+        out.push(json!({
+            "rank": i + 1,
+            "playCount": it["playCount"].as_i64().unwrap_or(0),
+            "name": name, "ar": ar, "al": al, "alId": al_id, "dur": dur,
+        }));
+    }
+    Ok(json!({ "total": out.len(), "items": out }))
+}
