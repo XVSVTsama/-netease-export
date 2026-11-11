@@ -95,6 +95,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
   <div class="seg" id="mainTabs">
     <button data-v="playlists" class="on">歌单</button>
     <button data-v="albums">收藏专辑</button>
+    <button data-v="favlist">收藏歌单</button>
     <button data-v="ranking">听歌排行</button>
     <button data-v="special">专项统计</button>
   </div>
@@ -103,7 +104,15 @@ input:focus,textarea:focus{border-color:var(--accent)}
   <div id="view-playlists">
     <div class="row" style="justify-content:space-between;margin-bottom:8px">
       <h2 style="margin:0;flex:1">我的歌单</h2>
+      <button class="ghost small" id="btnPrivacy">隐私模式</button>
       <button class="ghost small" id="btnRefresh">刷新</button>
+    </div>
+    <div class="seg" id="dispModes" style="margin-bottom:8px">
+      <button data-d="raw" class="on">原始</button>
+      <button data-d="mark">标记不可见</button>
+      <button data-d="esc">转义</button>
+      <button data-d="cp">U+ 码点</button>
+      <button data-d="skeleton">去组合符</button>
     </div>
     <div class="list" id="list"><div class="empty">加载中…</div></div>
     <div class="row" style="margin-top:10px">
@@ -127,6 +136,15 @@ input:focus,textarea:focus{border-color:var(--accent)}
   </div>
 
   <!-- 排行 -->
+  <div id="view-favlist" hidden>
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h2 style="margin:0;flex:1">收藏歌单</h2>
+      <button class="ghost small" id="btnFavCsv">导出 CSV</button>
+    </div>
+    <div class="list" id="favlist"><div class="empty">加载中…</div></div>
+    <div class="state" id="favState"></div>
+  </div>
+
   <div id="view-ranking" hidden>
     <div class="row" style="justify-content:space-between;margin-bottom:8px">
       <h2 style="margin:0;flex:1">听歌排行</h2>
@@ -178,6 +196,40 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 let uid = 0, nickname = '', pollTimer = null, busy = false;
 let PLAYLISTS = [], ALBUMS = [], RANK = [], RANK_WEEK = false, currentView = 'playlists', currentId = 0;
 let ACC = { down: 0, otherVersion: 0, special: 0, nonLatin: 0, total: 0, playlists: 0 };
+let DISP = 'raw', PRIVACY = false;
+let FAVLIST = [];
+
+const INVISIBLE = cp => cp < 0x20 || cp === 0x7f || (cp >= 0x200b && cp <= 0x200f) ||
+  (cp >= 0x202a && cp <= 0x202e) || (cp >= 0x2066 && cp <= 0x2069) || cp === 0xfeff || cp === 0xad ||
+  (cp >= 0x0300 && cp <= 0x036f);
+
+function disp(s) {
+  const t = String(s ?? '');
+  if (DISP === 'raw') return t;
+  if (DISP === 'mark') return t.replace(/[\\u0000-\\u001f\\u007f\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069\\ufeff\\u00ad]/g,
+    c => '⟨U+' + c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0') + '⟩');
+  if (DISP === 'esc') return [...t].map(c => { const cp = c.codePointAt(0); return INVISIBLE(cp) ? '\\\\u' + cp.toString(16).toUpperCase().padStart(4, '0') : c; }).join('');
+  if (DISP === 'cp') return [...t].map(c => 'U+' + c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')).join(' ');
+  if (DISP === 'skeleton') return t.replace(/[\\p{Mn}\\p{Mc}\\p{Cf}]/gu, '');
+  return t;
+}
+
+function maskPl(name, idx) { return PRIVACY ? `歌单 ${String(idx + 1).padStart(3, '0')}` : name; }
+function maskNick() { return PRIVACY ? '账号 1' : nickname; }
+
+function setDisp(m) {
+  DISP = m;
+  document.querySelectorAll('#dispModes button').forEach(b => b.classList.toggle('on', b.dataset.d === m));
+  if (PLAYLISTS.length) renderPlaylists();
+  if ($('detailCard').hidden === false) { /* 详情需重新拉取才刷新，忽略 */ }
+}
+
+function togglePrivacy() {
+  PRIVACY = !PRIVACY;
+  $('btnPrivacy').textContent = PRIVACY ? '隐私：开' : '隐私模式';
+  $('sub').textContent = PRIVACY ? '已登录（隐私模式）' : (nickname ? `已登录：${nickname}（uid ${uid}）` : '已登录');
+  if (PLAYLISTS.length) renderPlaylists();
+}
 
 function accStats(st) {
   if (!st) return;
@@ -267,15 +319,21 @@ async function loadPlaylists(silent=false){
   try {
     const r = await inv('playlists', { uid });
     PLAYLISTS = r.items || [];
-    $('list').innerHTML = PLAYLISTS.length ? PLAYLISTS.map(p => {
-      const tags = [];
-      if (!p.mine) tags.push('<span class="badge">收藏</span>');
-      if (p.privacy === 10) tags.push('<span class="badge">私密</span>');
-      return `<div class="item" data-id="${p.id}" data-name="${esc(p.name)}" style="cursor:pointer"><span class="n">${tags.join('')}${esc(p.name)}</span><span class="c">${p.count} 首 ›</span></div>`;
-    }).join('') : '<div class="empty">没有歌单</div>';
-    document.querySelectorAll('#list [data-id]').forEach(el => el.onclick = () => openPlaylist(Number(el.dataset.id), el.dataset.name));
-    $('sub').textContent = `已登录：${nickname}（uid ${uid}）· 歌单 ${r.total} 个`;
+    FAVLIST = PLAYLISTS.filter(p => !p.mine);
+    renderPlaylists();
+    if (PRIVACY) $('sub').textContent = `已登录（隐私模式）· 歌单 ${r.total} 个`;
+    else $('sub').textContent = `已登录：${nickname}（uid ${uid}）· 歌单 ${r.total} 个`;
   } catch (e) { $('list').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`; }
+}
+
+function renderPlaylists() {
+  $('list').innerHTML = PLAYLISTS.length ? PLAYLISTS.map((p, i) => {
+    const tags = [];
+    if (!p.mine) tags.push('<span class="badge">收藏</span>');
+    if (p.privacy === 10) tags.push('<span class="badge">私密</span>');
+    return `<div class="item" data-id="${p.id}" data-name="${esc(p.name)}" style="cursor:pointer"><span class="n">${tags.join('')}${esc(maskPl(disp(p.name), i))}</span><span class="c">${p.count} 首 ›</span></div>`;
+  }).join('') : '<div class="empty">没有歌单</div>';
+  document.querySelectorAll('#list [data-id]').forEach(el => el.onclick = () => openPlaylist(Number(el.dataset.id), el.dataset.name));
 }
 
 async function openPlaylist(id, name){
@@ -292,9 +350,28 @@ async function openPlaylist(id, name){
     $('detailMeta').textContent = `曲目 ${d.count || rows.length} 首`;
     $('tracks').innerHTML = rows.length ? rows.map((r,i) => {
       const flag = r.ncr ? '<span class="badge">仅其他版本</span>' : '';
-      return `<div class="item"><span class="n">${i+1}. ${flag}${esc(r.name)}<br><span style="color:var(--muted);font-size:12px">${esc(r.ar)} · ${esc(r.al)} · ${esc(r.company||'未标注厂牌')}</span></span><span class="c">${fmtDur(r.dur)}</span></div>`;
+      return `<div class="item"><span class="n">${i+1}. ${flag}${esc(disp(r.name))}<br><span style="color:var(--muted);font-size:12px">${esc(r.ar)} · ${esc(r.al)} · ${esc(r.company||'未标注厂牌')}</span></span><span class="c">${fmtDur(r.dur)}</span></div>`;
     }).join('') : '<div class="empty">没有曲目</div>';
   } catch (e) { $('detailMeta').textContent=''; $('tracks').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`; }
+}
+
+/* ---------- 收藏歌单 ---------- */
+function renderFavlist() {
+  $('favlist').innerHTML = FAVLIST.length ? FAVLIST.map((p, i) =>
+    `<div class="item"><span class="n">${esc(maskPl(disp(p.name), i))}<br><span style="color:var(--muted);font-size:12px">${esc(p.creator || '未知作者')}</span></span><span class="c">${p.count} 首</span></div>`
+  ).join('') : '<div class="empty">没有收藏歌单</div>';
+  setState('favState', `共 ${FAVLIST.length} 个`, 'ok');
+}
+
+async function exportFavlist() {
+  if (!FAVLIST.length) return;
+  const e = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const head = '序号,歌单,作者,曲目数,歌单ID\n';
+  const rows = FAVLIST.map((p, i) => [i + 1, e(p.name), e(p.creator), p.count, p.id].join(',')).join('\n');
+  try {
+    const r = await inv('save_text', { name: '收藏歌单.csv', content: '\ufeff' + head + rows + '\n' });
+    setState('favState', '已导出：' + r.paths.join(' / '), 'ok');
+  } catch (e2) { setState('favState', '导出失败：' + e2, 'err'); }
 }
 
 /* ---------- 导出 ---------- */
@@ -379,7 +456,8 @@ async function exportRank(){
 function switchView(v){
   currentView = v;
   document.querySelectorAll('#mainTabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  ['playlists','albums','ranking','special'].forEach(k => { $('view-'+k).hidden = k !== v; });
+  ['playlists','albums','favlist','ranking','special'].forEach(k => { $('view-'+k).hidden = k !== v; });
+  if (v === 'favlist') renderFavlist();
   if (v === 'special') renderSpecial();
   if (v === 'albums' && !ALBUMS.length) loadAlbums();
   if (v === 'ranking' && !RANK.length) loadRank(false);
@@ -402,6 +480,9 @@ $('btnRefresh').onclick = () => loadPlaylists();
 $('btnAllCsv').onclick = () => exportAll('csv');
 $('btnAllMd').onclick = () => exportAll('md');
 $('btnAlbumCsv').onclick = exportAlbums;
+$('btnFavCsv').onclick = exportFavlist;
+$('btnPrivacy').onclick = togglePrivacy;
+document.querySelectorAll('#dispModes button').forEach(b => b.onclick = () => setDisp(b.dataset.d));
 $('btnRankCsv').onclick = exportRank;
 $('btnZip').onclick = async () => {
   setState('zipState','打包中…');
