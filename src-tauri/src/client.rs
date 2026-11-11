@@ -43,6 +43,10 @@ impl Client {
         }
     }
 
+    pub fn clear_cookies(&self) {
+        self.cookies.lock().unwrap().clear();
+    }
+
     pub fn has_login(&self) -> bool {
         self.cookies.lock().unwrap().contains_key("MUSIC_U")
     }

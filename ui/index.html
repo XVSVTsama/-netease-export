@@ -6,38 +6,32 @@
 <meta name="color-scheme" content="light dark">
 <title>网易云导出</title>
 <style>
-:root{
-  --bg:#ffffff; --card:#f5f5f7; --text:#1d1d1f; --muted:#6e6e73;
-  --accent:#fa2d48; --line:#e5e5ea; --ok:#1db954; --warn:#c98a00;
-}
-@media (prefers-color-scheme: dark){
-  :root{--bg:#000;--card:#1c1c1e;--text:#f5f5f7;--muted:#8e8e93;--line:#2c2c2e;--ok:#30d158;--warn:#ffd60a}
-}
+:root{--bg:#fff;--card:#f5f5f7;--text:#1d1d1f;--muted:#6e6e73;--accent:#fa2d48;--line:#e5e5ea;--ok:#1db954;--warn:#c98a00}
+@media (prefers-color-scheme: dark){:root{--bg:#000;--card:#1c1c1e;--text:#f5f5f7;--muted:#8e8e93;--line:#2c2c2e;--ok:#30d158;--warn:#ffd60a}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
-body{
-  background:var(--bg); color:var(--text);
-  font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",system-ui,sans-serif;
-  padding:calc(16px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
-  min-height:100vh;
-}
+body{background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",system-ui,sans-serif;
+  padding:calc(16px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));min-height:100vh}
 h1{font-size:24px;margin:0 0 4px;letter-spacing:-.02em}
 .sub{color:var(--muted);font-size:13px;margin-bottom:16px;word-break:break-all}
 .card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
 .card h2{font-size:15px;margin:0 0 10px;font-weight:600}
-button{
-  padding:12px 16px;border-radius:12px;border:0;background:var(--accent);color:#fff;
-  font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;min-height:44px
-}
+button{padding:12px 16px;border-radius:12px;border:0;background:var(--accent);color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;min-height:44px}
 button.ghost{background:var(--bg);color:var(--text);border:1px solid var(--line)}
-button:disabled{opacity:.4;cursor:default}
+button:disabled{opacity:.4}
+input,textarea{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:15px/1.4 inherit;font-family:inherit;outline:none}
+textarea{min-height:88px;resize:vertical;font-size:13px}
+input:focus,textarea:focus{border-color:var(--accent)}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row > *{flex:1}
+.row > button{flex:0 0 auto}
+.seg{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;padding-bottom:2px}
+.seg button{flex:1 0 auto;padding:9px 14px;border-radius:999px;background:var(--bg);color:var(--muted);border:1px solid var(--line);font-size:13.5px;min-height:38px}
+.seg button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.field{margin-bottom:8px}
 .qr-wrap{text-align:center}
-.qr-wrap img{
-  width:min(64vw,260px);height:auto;display:block;margin:14px auto 8px;
-  background:#fff;padding:10px;border-radius:12px
-}
-.state{color:var(--muted);font-size:13px;min-height:20px;text-align:center}
+.qr-wrap img{width:min(62vw,250px);height:auto;display:block;margin:10px auto 6px;background:#fff;padding:10px;border-radius:12px}
+.state{font-size:13px;min-height:20px;text-align:center;color:var(--muted);margin-top:6px}
 .state.err{color:var(--accent)}
 .state.ok{color:var(--ok)}
 .list{max-height:min(52vh,420px);overflow-y:auto;-webkit-overflow-scrolling:touch}
@@ -45,9 +39,9 @@ button:disabled{opacity:.4;cursor:default}
 .item:first-child{border-top:0}
 .item .n{flex:1;word-break:break-word}
 .item .c{color:var(--muted);font-size:12.5px;white-space:nowrap;flex:0 0 auto}
-.badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-right:6px;vertical-align:1px}
+.badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
 .empty{color:var(--muted);font-size:13.5px;text-align:center;padding:18px 0}
-.hint{color:var(--muted);font-size:12px;margin-top:8px;text-align:center}
+.hint{color:var(--muted);font-size:12px;margin-top:8px;text-align:center;line-height:1.6}
 </style>
 </head>
 <body>
@@ -56,50 +50,86 @@ button:disabled{opacity:.4;cursor:default}
 
 <section class="card" id="loginCard">
   <h2>登录</h2>
-  <div class="row">
-    <button id="btnLogin">扫码登录</button>
-    <button class="ghost" id="btnAccount">检查登录态</button>
+  <div class="seg" id="tabs">
+    <button data-m="qr" class="on">扫码</button>
+    <button data-m="phone">手机号</button>
+    <button data-m="email">邮箱</button>
+    <button data-m="cookie">Cookie</button>
   </div>
-  <div id="qrBox" class="qr-wrap"></div>
+
+  <div id="pane-qr">
+    <div class="row"><button id="btnLogin">生成二维码</button></div>
+    <div id="qrBox" class="qr-wrap"></div>
+    <div class="hint">手机网易云扫码后需在手机上点「确认登录」<br>若提示设备环境异常，改用 Cookie 方式</div>
+  </div>
+
+  <div id="pane-phone" hidden>
+    <div class="field"><input id="phone" inputmode="numeric" placeholder="手机号"></div>
+    <div class="field"><input id="phonePwd" type="password" placeholder="密码"></div>
+    <div class="row"><button class="ghost" id="btnPhonePwd">密码登录</button></div>
+    <div class="hint">或使用短信验证码</div>
+    <div class="row" style="margin-top:6px">
+      <input id="smsCode" inputmode="numeric" placeholder="短信验证码">
+      <button class="ghost" id="btnSmsSent">获取</button>
+    </div>
+    <div class="row" style="margin-top:8px"><button id="btnPhoneSms">验证码登录</button></div>
+  </div>
+
+  <div id="pane-email" hidden>
+    <div class="field"><input id="email" inputmode="email" placeholder="邮箱"></div>
+    <div class="field"><input id="emailPwd" type="password" placeholder="密码"></div>
+    <button id="btnEmail">邮箱登录</button>
+  </div>
+
+  <div id="pane-cookie" hidden>
+    <div class="field"><textarea id="cookieText" placeholder="粘贴 MUSIC_U=... 或直接粘贴 MUSIC_U 的值"></textarea></div>
+    <div class="row"><button id="btnCookie">用 Cookie 登录</button></div>
+    <div class="hint">最稳的方式：直接从已登录的客户端或浏览器复制，不受扫码风控影响</div>
+  </div>
+
   <div class="state" id="state"></div>
-  <div class="hint">若提示「无法登录」，多为二维码过期，重新生成即可</div>
 </section>
 
 <section class="card" id="listCard" hidden>
   <div class="row" style="justify-content:space-between;margin-bottom:8px">
     <h2 style="margin:0">我的歌单</h2>
-    <button class="ghost" id="btnRefresh" style="padding:8px 14px;min-height:36px;font-size:13.5px">刷新</button>
+    <button class="ghost" id="btnRefresh" style="padding:8px 14px;min-height:36px;font-size:13.5px;flex:0 0 auto">刷新</button>
   </div>
   <div class="list" id="list"><div class="empty">加载中…</div></div>
+  <div class="row" style="margin-top:10px"><button class="ghost" id="btnLogout">退出登录</button></div>
 </section>
 
 <script>
 const inv = (cmd, args = {}) => window.__TAURI__.core.invoke(cmd, args);
 const $ = id => document.getElementById(id);
-
-let uid = 0;
-let nickname = '';
-let pollTimer = null;
-let busy = false;
-
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let uid = 0, nickname = '', pollTimer = null, busy = false;
 
 function setState(text, kind = '') {
   const el = $('state');
-  el.textContent = text;
+  el.textContent = text || '';
   el.className = 'state' + (kind ? ' ' + kind : '');
 }
+function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
-function stopPoll() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+function switchTab(m) {
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+  ['qr', 'phone', 'email', 'cookie'].forEach(k => { $('pane-' + k).hidden = k !== m; });
+  setState('');
+}
+
+async function afterLogin() {
+  stopPoll();
+  setState('登录成功', 'ok');
+  setTimeout(() => checkAccount(), 300);
 }
 
 async function checkAccount(silent = false) {
   try {
     const a = await inv('account');
     if (a.logged) {
-      uid = a.uid || 0;
-      nickname = a.nickname || '';
+      uid = a.uid || 0; nickname = a.nickname || '';
       $('sub').textContent = nickname ? `已登录：${nickname}（uid ${uid}）` : `已登录（uid ${uid}）`;
       $('loginCard').hidden = true;
       $('listCard').hidden = false;
@@ -120,75 +150,78 @@ async function loadPlaylists(silent = false) {
   try {
     const r = await inv('playlists', { uid });
     const items = r.items || [];
-    if (!items.length) {
-      $('list').innerHTML = '<div class="empty">这个账号下没有歌单</div>';
-    } else {
-      $('list').innerHTML = items.map(p => {
-        const tags = [];
-        if (!p.mine) tags.push('<span class="badge">收藏</span>');
-        if (p.privacy === 10) tags.push('<span class="badge">私密</span>');
-        return `<div class="item"><span class="n">${tags.join('')}${esc(p.name)}</span><span class="c">${p.count} 首</span></div>`;
-      }).join('');
-    }
+    $('list').innerHTML = items.length ? items.map(p => {
+      const tags = [];
+      if (!p.mine) tags.push('<span class="badge">收藏</span>');
+      if (p.privacy === 10) tags.push('<span class="badge">私密</span>');
+      return `<div class="item"><span class="n">${tags.join('')}${esc(p.name)}</span><span class="c">${p.count} 首</span></div>`;
+    }).join('') : '<div class="empty">这个账号下没有歌单</div>';
     $('sub').textContent = (nickname ? `已登录：${nickname}（uid ${uid}）` : `已登录（uid ${uid}）`) + ` · 共 ${r.total} 个歌单`;
-    setState('');
   } catch (e) {
     $('list').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`;
   }
 }
 
-async function startLogin() {
+async function startQr() {
   if (busy) return;
-  busy = true;
-  $('btnLogin').disabled = true;
-  stopPoll();
+  busy = true; $('btnLogin').disabled = true; stopPoll();
   $('qrBox').innerHTML = '';
   setState('正在生成二维码…');
   try {
     const q = await inv('qr_new');
     $('qrBox').innerHTML = `<img src="${q.img}" alt="登录二维码">`;
-    setState('用手机网易云扫码，并在手机上点「确认登录」');
+    setState('等待扫码…');
     pollTimer = setInterval(async () => {
       try {
         const s = await inv('qr_poll');
         if (s.code === 802) setState('已扫码，请在手机上确认…');
-        else if (s.code === 803) {
-          stopPoll();
-          setState('登录成功', 'ok');
-          $('qrBox').innerHTML = '';
-          busy = false;
-          $('btnLogin').disabled = false;
-          setTimeout(() => checkAccount(), 300);
-        } else if (s.code === 800 || s.code === 8821) {
-          stopPoll();
-          setState('二维码已失效，请重新生成', 'err');
-          $('qrBox').innerHTML = '';
-          busy = false;
-          $('btnLogin').disabled = false;
+        else if (s.code === 803) { await afterLogin(); $('qrBox').innerHTML = ''; }
+        else if (s.code === 800 || s.code === 8821) {
+          stopPoll(); $('qrBox').innerHTML = '';
+          setState('二维码失效或被风控拦截，建议改用 Cookie 登录', 'err');
         }
-      } catch (e) {
-        stopPoll();
-        setState('轮询失败：' + e, 'err');
-        busy = false;
-        $('btnLogin').disabled = false;
-      }
+      } catch (e) { stopPoll(); setState('轮询失败：' + e, 'err'); }
     }, 2000);
   } catch (e) {
     setState('生成二维码失败：' + e, 'err');
-    busy = false;
   } finally {
-    $('btnLogin').disabled = false;
+    busy = false; $('btnLogin').disabled = false;
   }
 }
 
-$('btnLogin').onclick = startLogin;
-$('btnAccount').onclick = async () => {
-  setState('检查中…');
-  await checkAccount();
-  if ($('loginCard').hidden) setState('');
+async function runLogin(cmd, args) {
+  setState('登录中…');
+  try {
+    const r = await inv(cmd, args || {});
+    if (r && r.ok) await afterLogin();
+    else setState('登录失败', 'err');
+  } catch (e) {
+    setState(String(e), 'err');
+  }
+}
+
+$('btnLogin').onclick = startQr;
+$('btnPhonePwd').onclick = () => runLogin('login_phone_password', { phone: $('phone').value, password: $('phonePwd').value });
+$('btnPhoneSms').onclick = () => runLogin('login_phone_captcha', { phone: $('phone').value, captcha: $('smsCode').value });
+$('btnEmail').onclick = () => runLogin('login_email', { email: $('email').value, password: $('emailPwd').value });
+$('btnCookie').onclick = () => runLogin('login_cookie', { cookie: $('cookieText').value });
+$('btnSmsSent').onclick = async () => {
+  const phone = $('phone').value.trim();
+  if (!phone) return setState('请先填手机号', 'err');
+  setState('发送中…');
+  try {
+    const r = await inv('sms_sent', { phone });
+    setState(r.message || (r.ok ? '验证码已发送' : '发送失败'), r.ok ? 'ok' : 'err');
+  } catch (e) { setState(String(e), 'err'); }
 };
 $('btnRefresh').onclick = () => loadPlaylists();
-
+$('btnLogout').onclick = async () => {
+  await inv('logout');
+  $('loginCard').hidden = false; $('listCard').hidden = true;
+  $('sub').textContent = '未登录';
+  setState('已退出登录');
+};
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => switchTab(b.dataset.m));
 window.addEventListener('beforeunload', stopPoll);
 checkAccount(true);
 </script>

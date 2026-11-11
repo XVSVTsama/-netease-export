@@ -3,7 +3,11 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use qrcode::QrCode;
 use serde_json::{json, Value};
 
-/// 生成扫码 unikey，并返回二维码（base64 PNG 的 data URL）
+fn md5_hex(s: &str) -> String {
+    format!("{:x}", md5::compute(s))
+}
+
+/// 生成扫码 unikey，并返回二维码（SVG data URL）
 pub async fn qr_new(c: &Client) -> Result<Value, String> {
     let r = c.eapi("/login/qrcode/unikey", json!({ "type": 1 })).await?;
     if r["code"].as_i64() != Some(200) {
@@ -51,6 +55,108 @@ pub async fn account(c: &Client) -> Result<Value, String> {
         "uid": r["account"]["id"].as_i64().unwrap_or(0),
         "cookie": c.cookie_header(),
     }))
+}
+
+/// 方式二：粘贴 Cookie（MUSIC_U 或完整 cookie 串）
+pub async fn login_cookie(c: &Client, cookie: &str) -> Result<Value, String> {
+    let raw = cookie.trim();
+    if raw.is_empty() {
+        return Err("Cookie 为空".into());
+    }
+    // 允许只贴 MUSIC_U 的值
+    let normalized = if raw.contains('=') { raw.to_string() } else { format!("MUSIC_U={}", raw) };
+    c.set_cookie(&normalized);
+    let a = account(c).await?;
+    if a["logged"].as_bool() == Some(true) {
+        Ok(json!({ "ok": true, "nickname": a["nickname"], "uid": a["uid"] }))
+    } else {
+        Err("Cookie 无效或已过期".into())
+    }
+}
+
+/// 方式三：手机号 + 密码
+pub async fn login_phone_password(c: &Client, phone: &str, password: &str) -> Result<Value, String> {
+    let r = c
+        .weapi(
+            "/weapi/login/cellphone",
+            json!({
+                "phone": phone.trim(),
+                "password": md5_hex(password),
+                "countrycode": "86",
+                "rememberLogin": true,
+            }),
+        )
+        .await?;
+    let code = r["code"].as_i64().unwrap_or(-1);
+    if code == 200 {
+        Ok(json!({ "ok": true, "code": code, "nickname": r["profile"]["nickname"], "uid": r["account"]["id"] }))
+    } else {
+        let msg = match code {
+            501 => "账号不存在",
+            502 => "密码错误",
+            8810 => "需要验证码校验",
+            400 => "参数错误",
+            _ => r["message"].as_str().unwrap_or("登录失败"),
+        };
+        Err(format!("{}（code {}）", msg, code))
+    }
+}
+
+/// 方式四：手机号 + 短信验证码（发送）
+pub async fn sms_sent(c: &Client, phone: &str) -> Result<Value, String> {
+    let r = c
+        .weapi(
+            "/weapi/sms/captcha/sent",
+            json!({ "cellphone": phone.trim(), "ctcode": "86" }),
+        )
+        .await?;
+    let code = r["code"].as_i64().unwrap_or(-1);
+    Ok(json!({
+        "ok": code == 200,
+        "code": code,
+        "message": if code == 200 { "验证码已发送".to_string() } else { r["message"].as_str().unwrap_or("发送失败").to_string() }
+    }))
+}
+
+/// 方式四：手机号 + 短信验证码（校验登录）
+pub async fn login_phone_captcha(c: &Client, phone: &str, captcha: &str) -> Result<Value, String> {
+    let r = c
+        .weapi(
+            "/weapi/login/cellphone",
+            json!({
+                "phone": phone.trim(),
+                "captcha": captcha.trim(),
+                "countrycode": "86",
+                "rememberLogin": true,
+            }),
+        )
+        .await?;
+    let code = r["code"].as_i64().unwrap_or(-1);
+    if code == 200 {
+        Ok(json!({ "ok": true, "code": code, "nickname": r["profile"]["nickname"], "uid": r["account"]["id"] }))
+    } else {
+        Err(format!("{}（code {}）", r["message"].as_str().unwrap_or("登录失败"), code))
+    }
+}
+
+/// 方式五：邮箱 + 密码
+pub async fn login_email(c: &Client, email: &str, password: &str) -> Result<Value, String> {
+    let r = c
+        .weapi(
+            "/weapi/login",
+            json!({
+                "username": email.trim(),
+                "password": md5_hex(password),
+                "rememberLogin": true,
+            }),
+        )
+        .await?;
+    let code = r["code"].as_i64().unwrap_or(-1);
+    if code == 200 {
+        Ok(json!({ "ok": true, "code": code, "nickname": r["profile"]["nickname"], "uid": r["account"]["id"] }))
+    } else {
+        Err(format!("{}（code {}）", r["message"].as_str().unwrap_or("登录失败"), code))
+    }
 }
 
 /// 用户歌单列表（自建 + 收藏）
