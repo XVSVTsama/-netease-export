@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>登录 · 网易云导出</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+.center{max-width:520px;margin:0 auto;padding:24px 18px;text-align:center}
+.center img{width:min(78vw,420px);background:#fff;padding:12px;border-radius:18px;margin:16px auto}
+.state{font-size:15px;color:var(--muted);min-height:26px}
+</style>
+</head>
+<body data-page="login">
+<header class="top">
+  <div class="bar">
+    <h1>扫码登录</h1>
+    <a class="icon-btn" href="/">×</a>
+    <button class="icon-btn" id="privacyBtn">🔒</button>
+    <button class="icon-btn" id="themeBtn">☾</button>
+  </div>
+  <div class="sub" id="target">准备中…</div>
+</header>
+<div class="center">
+  <div id="box"><div class="empty">正在生成二维码…</div></div>
+  <div class="state" id="state"></div>
+  <div class="hint">用手机网易云扫码，并在手机上点「确认登录」<br>二维码 55 秒自动更换，扫码后不再更换</div>
+</div>
+<script>
+const ACC = new URLSearchParams(location.search).get('acc') || '';
+document.getElementById('target').textContent = ACC === 'new' ? '将添加为新账号（独立目录，互不影响）' : '登录账号：' + ACC;
+let at = 0, done = false;
+async function tick() {
+  const d = await fetch('/api/login').then(r => r.json()).catch(() => null);
+  if (!d) return setTimeout(tick, 2500);
+  const box = document.getElementById('box'), st = document.getElementById('state');
+  if (d.state === 'ok') { done = true; box.innerHTML = '<h2 style="color:var(--ok)">登录成功</h2><div class="hint">' + (d.who || '') + '</div>'; st.textContent = '可以返回了'; return; }
+  if (d.error) { box.innerHTML = '<div class="empty">' + d.error + '</div>'; }
+  else if (d.at !== at) { at = d.at; box.innerHTML = '<img src="' + d.img + '" alt="二维码">'; }
+  st.textContent = d.state === 'scanned' ? '已扫码，请在手机上确认' : '等待扫码…';
+  setTimeout(tick, 2000);
+}
+fetch('/api/login?new=1&acc=' + encodeURIComponent(ACC)).then(() => tick());
+</script>
+<script src="/app.js" onerror=""></script>
+</body>
+</html>

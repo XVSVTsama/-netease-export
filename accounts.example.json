@@ -1,0 +1,12 @@
+{
+  "current": "default",
+  "accounts": [
+    {
+      "id": "default",
+      "nick": "我的账号",
+      "uid": "",
+      "root": ".",
+      "dest": "./导出"
+    }
+  ]
+}

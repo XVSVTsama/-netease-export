@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>收藏专辑 · 网易云导出</title>
+<link rel="stylesheet" href="/fonts.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body data-page="albums">
+<header class="top">
+  <div class="bar">
+    <h1>收藏专辑</h1>
+    <a class="icon-btn" href="/">◎</a>
+    <button class="icon-btn" id="privacyBtn">🔒</button>
+    <button class="icon-btn" id="themeBtn">☾</button>
+  </div>
+  <div class="sub" id="cnt">加载中…</div>
+</header>
+
+<main>
+  <div class="accs" id="accs"></div>
+  <input type="search" id="q" placeholder="搜索专辑名 / 艺人 / 厂牌" autocomplete="off">
+
+  <section class="section" id="detail" style="display:none">
+    <div class="hero" id="hero"></div>
+    <div class="tracks" id="dsongs"></div>
+  </section>
+
+  <section class="section">
+    <div class="grid" id="grid"></div>
+  </section>
+</main>
+
+<nav class="tabs">
+  <a href="/"><span class="i">◎</span>概览</a>
+  <a href="/browse"><span class="i">☰</span>歌单</a>
+  <a href="/albums" class="on"><span class="i">◫</span>收藏专辑</a>
+  <a href="/docs"><span class="i">✳</span>专项</a>
+</nav>
+
+<script src="/app.js"></script>
+</body>
+</html>

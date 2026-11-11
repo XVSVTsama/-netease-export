@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>网易云导出</title>
+<link rel="stylesheet" href="/fonts.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body data-page="home">
+<header class="top">
+  <div class="bar">
+    <h1>网易云导出</h1>
+    <button class="icon-btn" id="privacyBtn">🔒</button>
+    <button class="icon-btn" id="themeBtn">☾</button>
+  </div>
+  <div class="sub" id="sub">加载中…</div>
+</header>
+
+<main>
+  <div class="accs" id="accs"></div>
+
+  <div class="banner" id="banner" style="display:none"></div>
+
+  <section class="section">
+    <h2>我的创建<span class="count" id="createdMeta"></span></h2>
+    <div class="stats" id="createdStats" style="margin-bottom:14px"></div>
+    <div class="row-label">歌单</div>
+    <div class="actions row3">
+      <button class="btn primary" data-run="sync">同步</button>
+      <button class="btn" data-run="tidy">整理</button>
+      <button class="btn" data-run="check">核验</button>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>我的收藏<span class="count" id="favMeta"></span></h2>
+    <div class="stats" id="favStats" style="margin-bottom:14px"></div>
+    <div class="row-label">歌单</div>
+    <div class="actions row3">
+      <button class="btn soft" data-run="cplSync">同步</button>
+      <button class="btn" data-run="cplTidy">整理</button>
+      <button class="btn" data-run="cplCheck">核验</button>
+    </div>
+    <div class="row-label">收藏专辑</div>
+    <div class="actions row3">
+      <button class="btn soft" data-run="favSync">同步</button>
+      <button class="btn" data-run="favTidy">整理</button>
+      <button class="btn" data-run="favCheck">核验</button>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>任务</h2>
+    <div class="banner" id="pendingNote" style="display:none;background:var(--accent-soft);color:var(--accent);border:0"></div>
+    <div class="status-line">
+      <span class="dot" id="dot"></span>
+      <strong id="jobName" style="font-size:14px">空闲</strong>
+      <span class="pill-status" id="jobState">待命</span>
+    </div>
+    <div class="doc" id="log">等待任务…</div>
+    <div class="actions" style="margin-top:10px">
+      <a class="btn" href="/api/log/download">下载本次日志</a>
+      <a class="btn" href="/zip">下载压缩包</a>
+    </div>
+    <div class="hint" id="zipHint"></div>
+    <div class="actions" style="margin-top:10px">
+      <a class="btn small" href="/zip">下载压缩包</a>
+      <a class="btn small" href="/settings">更多设置</a>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>最近任务</h2>
+    <div class="list" id="hist"><div class="empty">暂无记录</div></div>
+  </section>
+</main>
+
+<nav class="tabs">
+  <a href="/" class="on"><span class="i">◎</span>概览</a>
+  <a href="/browse"><span class="i">☰</span>歌单</a>
+  <a href="/albums"><span class="i">◫</span>收藏专辑</a>
+  <a href="/docs"><span class="i">✳</span>专项</a>
+</nav>
+
+<script src="/app.js"></script>
+</body>
+</html>

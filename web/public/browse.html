@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>歌单 · 网易云导出</title>
+<link rel="stylesheet" href="/fonts.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body data-page="browse">
+<header class="top">
+  <div class="bar">
+    <h1>歌单</h1>
+    <a class="icon-btn" href="/">◎</a>
+    <button class="icon-btn" id="privacyBtn">🔒</button>
+    <button class="icon-btn" id="themeBtn">☾</button>
+  </div>
+  <div class="sub" id="cnt">加载中…</div>
+</header>
+
+<main>
+  <div class="accs" id="accs"></div>
+  <div class="seg" id="scopeSeg">
+    <button data-scope="created" class="on">我的创建</button>
+    <button data-scope="collected">我的收藏</button>
+  </div>
+  <input type="search" id="q" placeholder="搜索歌单名或歌单 ID" autocomplete="off">
+  <div class="spacer"></div>
+  <div class="accs" id="tabs">
+    <button class="chip on" data-f="all">全部</button>
+    <button class="chip" data-f="top">📌 置顶</button>
+    <button class="chip" data-f="pub">公开</button>
+    <button class="chip" data-f="priv">私密</button>
+    <button class="chip" data-f="empty">空歌单</button>
+    <button class="chip" data-f="small">小（&lt;50）</button>
+    <button class="chip" data-f="mid">中（50–499）</button>
+    <button class="chip" data-f="big">大（≥500）</button>
+  </div>
+
+
+  <div class="list" id="plist" style="margin-top:12px"></div>
+
+  <section class="section" id="viewer" style="display:none">
+    <h2 id="vName"></h2>
+    <div class="hint" id="vMeta"></div>
+    <div class="hint" id="vDesc" style="display:none;background:var(--bg-elev);border-radius:12px;padding:12px;margin-top:10px"></div>
+    <input type="search" id="sq" placeholder="在本歌单内搜索歌名 / 艺人 / 专辑 / 厂牌" autocomplete="off" style="margin-top:12px">
+    <div class="spacer"></div>
+    <div class="modes" id="modesHome"></div>
+    <div class="spacer"></div>
+    <div class="hint" id="hiddenNote" style="display:none"></div>
+    <div class="tracks" id="tracks"></div>
+    <div class="pager" id="pager"></div>
+  </section>
+</main>
+
+<nav class="tabs">
+  <a href="/"><span class="i">◎</span>概览</a>
+  <a href="/browse" class="on"><span class="i">☰</span>歌单</a>
+  <a href="/albums"><span class="i">◫</span>收藏专辑</a>
+  <a href="/docs"><span class="i">✳</span>专项</a>
+</nav>
+
+<script src="/app.js"></script>
+<script>
+document.getElementById('modesHome').innerHTML = `
+  <button class="mode" data-m="raw">原始</button>
+  <button class="mode" data-m="mark">标记不可见</button>
+  <button class="mode" data-m="esc">转义 \\uXXXX</button>
+  <button class="mode" data-m="cp">U+ 码点</button>
+  <button class="mode" data-m="skeleton">去组合符</button>`;
+</script>
+</body>
+</html>

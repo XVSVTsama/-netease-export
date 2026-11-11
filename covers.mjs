@@ -1,0 +1,20 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { post } from './export.mjs';
+
+const NC_ROOT = process.env.NC_ROOT || process.cwd();
+const BASE_OUT = path.join(NC_ROOT, 'out2');
+const STAGE_DIR = path.join(BASE_OUT, 'staging');
+const USE_STAGE = process.env.NC_STAGE === '1' || fs.existsSync(path.join(STAGE_DIR, 'playlists_full.json'));
+const OUT = USE_STAGE ? STAGE_DIR : BASE_OUT;
+const COV = path.join(OUT, 'covers.json');
+const acc = await post('/weapi/w/nuser/account/get');
+const uid = acc.account.id;
+const r = await post('/weapi/user/playlist', { uid, limit: 1000, offset: 0, includeVideo: true });
+const pls = r?.playlist || [];
+const map = {};
+for (const p of pls) if (p.coverImgUrl) map[String(p.id)] = p.coverImgUrl;
+const cov = fs.existsSync(COV) ? JSON.parse(fs.readFileSync(COV, 'utf8')) : {};
+cov.playlists = { ...(cov.playlists || {}), ...map };
+fs.writeFileSync(COV, JSON.stringify(cov));
+console.log('歌单封面', Object.keys(map).length, '个；文件累计 playlists', Object.keys(cov.playlists).length, 'albums', Object.keys(cov.albums || {}).length);

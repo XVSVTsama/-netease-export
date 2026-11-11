@@ -1,0 +1,55 @@
+{
+  "name": "netease-export",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "网易云歌单 / 收藏导出与本地面板",
+  "author": "XVSVTsama",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "panel": "node web/server.mjs",
+    "start": "electron .",
+    "dist:win": "electron-builder --win portable",
+    "dist:dir": "electron-builder --dir",
+    "sync": "node runner.mjs sync",
+    "tidy": "node runner.mjs tidy",
+    "check": "node runner.mjs check"
+  },
+  "build": {
+    "appId": "app.xvsvt.netease.export",
+    "productName": "网易云导出",
+    "files": [
+      "main.js",
+      "web/**/*",
+      "*.mjs",
+      "build.sh",
+      "accounts.example.json"
+    ],
+    "extraMetadata": { "main": "main.js" },
+    "win": { "target": [{ "target": "portable", "arch": ["x64"] }] },
+    "portable": { "artifactName": "netease-export-${version}.exe" }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "dependencies": {
+    "@fontsource/noto-sans-arabic": "^5.3.0",
+    "@fontsource/noto-sans-armenian": "^5.3.0",
+    "@fontsource/noto-sans-devanagari": "^5.3.0",
+    "@fontsource/noto-sans-ethiopic": "^5.3.0",
+    "@fontsource/noto-sans-georgian": "^5.3.0",
+    "@fontsource/noto-sans-hebrew": "^5.3.0",
+    "@fontsource/noto-sans-khmer": "^5.3.0",
+    "@fontsource/noto-sans-lao": "^5.3.0",
+    "@fontsource/noto-sans-myanmar": "^5.3.0",
+    "@fontsource/noto-sans-sinhala": "^5.3.0",
+    "@fontsource/noto-sans-symbols-2": "^5.3.0",
+    "@fontsource/noto-sans-thai": "^5.3.0",
+    "@fontsource/noto-sans-yi": "^5.3.0",
+    "@fontsource/noto-serif-tibetan": "^5.3.0",
+    "qrcode": "^1.5.4",
+    "undici": "^7.0.0"
+  }
+}

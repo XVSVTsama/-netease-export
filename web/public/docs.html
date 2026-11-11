@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>专项 · 网易云导出</title>
+<link rel="stylesheet" href="/fonts.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body data-page="docs">
+<header class="top">
+  <div class="bar">
+    <h1>专项视图</h1>
+    <a class="icon-btn" href="/">◎</a>
+    <button class="icon-btn" id="privacyBtn">🔒</button>
+    <button class="icon-btn" id="themeBtn">☾</button>
+  </div>
+  <div class="sub" id="desc">加载中…</div>
+</header>
+
+<main>
+  <div class="accs" id="accs"></div>
+  <div class="accs" id="tabs"></div>
+  <div id="batchBar" style="margin-top:10px"></div>
+  <input type="search" id="q" placeholder="搜索歌名 / 艺人 / 专辑 / 厂牌 / 歌单" autocomplete="off" style="margin-top:10px">
+  <div class="actions" style="margin-top:10px">
+  </div>
+  <div class="spacer"></div>
+  <div class="modes" id="modesHome"></div>
+  <div class="spacer"></div>
+  <div class="tracks" id="list" style="max-height:60vh"></div>
+  <div class="pager" id="pager"></div>
+</main>
+
+<nav class="tabs">
+  <a href="/"><span class="i">◎</span>概览</a>
+  <a href="/browse"><span class="i">☰</span>歌单</a>
+  <a href="/albums"><span class="i">◫</span>收藏专辑</a>
+  <a href="/docs" class="on"><span class="i">✳</span>专项</a>
+</nav>
+
+<script src="/app.js"></script>
+<script>
+document.getElementById('modesHome').innerHTML = `
+  <button class="mode" data-m="raw">原始</button>
+  <button class="mode" data-m="mark">标记不可见</button>
+  <button class="mode" data-m="esc">转义 \\uXXXX</button>
+  <button class="mode" data-m="cp">U+ 码点</button>
+  <button class="mode" data-m="skeleton">去组合符</button>`;
+</script>
+</body>
+</html>
