@@ -45,10 +45,23 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           CODE=$(node -p "const [a,b,c]=require('./package.json').version.split('.').map(Number); a*10000+b*100+c")
           GRADLE=src-tauri/gen/android/app/build.gradle.kts
+          PROPS=src-tauri/gen/android/app/tauri.properties
+          # Tauri 生成的 gradle 是从 tauri.properties 读版本，只 sed 数字行没用，这里直接改写取值表达式
+          sed -i -E "s/versionCode = tauriProperties[^\n]*/versionCode = $CODE/" "$GRADLE"
+          sed -i -E "s/versionName = tauriProperties[^\n]*/versionName = \"$VERSION\"/" "$GRADLE"
           sed -i -E "s/versionCode = [0-9]+/versionCode = $CODE/" "$GRADLE"
           sed -i -E "s/versionName = \"[^\"]*\"/versionName = \"$VERSION\"/" "$GRADLE"
+          if [ -f "$PROPS" ]; then
+            sed -i -E "s|^tauri.android.versionCode=.*|tauri.android.versionCode=$CODE|" "$PROPS"
+            sed -i -E "s|^tauri.android.versionName=.*|tauri.android.versionName=$VERSION|" "$PROPS"
+            grep -q '^tauri.android.versionCode=' "$PROPS" || echo "tauri.android.versionCode=$CODE" >> "$PROPS"
+            grep -q '^tauri.android.versionName=' "$PROPS" || echo "tauri.android.versionName=$VERSION" >> "$PROPS"
+            echo "--- tauri.properties ---"; cat "$PROPS"
+          fi
           echo "versionName=$VERSION versionCode=$CODE"
           grep -nE "versionCode|versionName" "$GRADLE"
+          # 改写失败就直接失败，不要悄悄用默认 versionCode 出包
+          grep -q "versionCode = $CODE" "$GRADLE"
 
       - name: 构建 APK（release，仅 arm64）
         run: npx tauri android build --apk --target aarch64
