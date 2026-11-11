@@ -3,13 +3,18 @@ import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import QRCode from 'qrcode';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
 const PORT = Number(process.env.PORT || 8789);
-const ROOT = process.cwd();          // 代码与默认数据所在
-const PUBLIC = path.join(ROOT, 'web/public');
+// 代码目录（只读，随程序走）与数据目录（可写，便携版在 exe 同级）分开
+const CODE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.resolve(process.env.NC_ROOT || process.cwd());
+const PUBLIC = path.join(CODE, 'web/public');
 const REG_FILE = path.join(ROOT, 'accounts.json');
+const VERSION = (() => { try { return JSON.parse(fs.readFileSync(path.join(CODE, 'package.json'), 'utf8')).version || ''; } catch { return ''; } })();
+process.chdir(ROOT);
 const EKEY = 'e82ckenh8dichen8';
 const UA_APP = 'NeteaseMusic/8.9.70.240407164325(8009070);Dalvik/2.1.0 (Linux; U; Android 13; PJZ110 Build/TP1A.220905.001)';
 
@@ -79,7 +84,7 @@ function applyProxyUrl(url) {
 /* ---------------- 账号 ---------------- */
 let REG = (() => {
   try { return JSON.parse(fs.readFileSync(REG_FILE, 'utf8')); }
-  catch { return { current: 'default', accounts: [{ id: 'default', nick: '默认账号', uid: '', root: ROOT, dest: '/workspace/mounts/Download/网易云歌单导出' }] }; }
+  catch { return { current: 'default', accounts: [{ id: 'default', nick: '默认账号', uid: '', root: ROOT, dest: path.join(ROOT, '导出') }] }; }
 })();
 const saveReg = () => fs.writeFileSync(REG_FILE, JSON.stringify(REG, null, 2));
 const curAcc = () => {
@@ -240,7 +245,10 @@ function startJob(mode, accId) {
   job = { mode, name: MODES[mode] + (targetAccLabel(accId)), running: true, start: Date.now(), end: 0, exit: null, lines: [], failedStep: '' };
   pushLine(`[${clock()}] 启动：${MODES[mode]}`);
   const targetAcc = accId && REG.accounts.some(a => a.id === accId) ? accId : REG.current;
-  const p = spawn('node', ['runner.mjs', mode, targetAcc], { cwd: ROOT });
+  const p = spawn(process.execPath, [path.join(CODE, 'runner.mjs'), mode, targetAcc], {
+    cwd: ROOT,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', NC_ROOT: ROOT },
+  });
   p.stdout.on('data', d => pushLine(d.toString()));
   p.stderr.on('data', d => pushLine('::STDERR::' + d.toString()));
   p.on('error', e => { pushLine('::ERROR::无法启动 runner：' + e.message); job.running = false; job.exit = -1; job.end = Date.now(); });
@@ -480,7 +488,8 @@ async function pollLogin() {
         const root = path.join(ROOT, 'accounts', uid || id);
         fs.mkdirSync(path.join(root, 'out2'), { recursive: true });
         fs.writeFileSync(path.join(root, 'cookie.txt'), cookieHeader());
-        if (!REG.accounts.some(a => a.id === id)) REG.accounts.push({ id, nick, uid, root, dest: `/workspace/mounts/Download/网易云歌单导出-${nick || uid}` });
+        const safeNick = String(nick || uid || id).replace(/[\\/:*?"<>|]/g, '_');
+        if (!REG.accounts.some(a => a.id === id)) REG.accounts.push({ id, nick, uid, root, dest: path.join(ROOT, `导出-${safeNick}`) });
         REG.current = id;
       } else {
         const a = REG.accounts.find(x => x.id === qr.target) || REG.accounts[0];
@@ -520,7 +529,7 @@ let fontCss = null;
 function buildFontCss() {
   if (fontCss) return fontCss;
   fontCss = FONT_PKGS.map(pkg => {
-    const f = path.join(ROOT, 'node_modules/@fontsource', pkg, '400.css');
+    const f = path.join(CODE, 'node_modules/@fontsource', pkg, '400.css');
     return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').replace(/\.\/files\//g, `/fonts/${pkg}/`) : '';
   }).join('\n');
   return fontCss;
@@ -540,6 +549,7 @@ const server = http.createServer(async (req, res) => {
   /* API */
   if (p === '/api/status') {
     return json({
+      version: VERSION, root: ROOT,
       accounts: REG.accounts.map(a => ({ id: a.id, nick: a.nick, uid: a.uid })),
       current: REG.current, dest: curAcc().dest, job, stats: getStats(), history,
     });
@@ -616,7 +626,7 @@ const server = http.createServer(async (req, res) => {
     });
   }
   if (p === '/api/dirs') {
-    const base = u.searchParams.get('path') || '/workspace/mounts/Download';
+    const base = u.searchParams.get('path') || path.dirname(curAcc().dest);
     try {
       const items = fs.readdirSync(base, { withFileTypes: true })
         .filter(d => d.isDirectory() && !d.name.startsWith('.'))
@@ -697,7 +707,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (p.startsWith('/fonts/')) {
     const [, , pkg, file] = p.split('/');
-    return sendFile(path.join(ROOT, 'node_modules/@fontsource', pkg, 'files', (file || '').replace(/[^A-Za-z0-9._-]/g, '')), 'font/woff2');
+    return sendFile(path.join(CODE, 'node_modules/@fontsource', pkg, 'files', (file || '').replace(/[^A-Za-z0-9._-]/g, '')), 'font/woff2');
   }
 
   /* 页面与静态 */

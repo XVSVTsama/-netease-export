@@ -40,26 +40,35 @@ jobs:
       - name: 初始化 Android 工程
         run: npx tauri android init --ci
 
+      - name: 写入版本号（覆盖安装需要递增 versionCode）
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          CODE=$(node -p "const [a,b,c]=require('./package.json').version.split('.').map(Number); a*10000+b*100+c")
+          GRADLE=src-tauri/gen/android/app/build.gradle.kts
+          sed -i -E "s/versionCode = [0-9]+/versionCode = $CODE/" "$GRADLE"
+          sed -i -E "s/versionName = \"[^\"]*\"/versionName = \"$VERSION\"/" "$GRADLE"
+          echo "versionName=$VERSION versionCode=$CODE"
+          grep -nE "versionCode|versionName" "$GRADLE"
+
       - name: 构建 APK（release，仅 arm64）
         run: npx tauri android build --apk --target aarch64
 
-      - name: 用 debug 密钥签名
+      - name: 用仓库内置密钥签名（保证新旧包签名一致，可直接覆盖升级）
         run: |
           APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | head -1)
           echo "目标: $APK"
-          keytool -genkeypair -noprompt \
-            -keystore "$RUNNER_TEMP/d.jks" -storepass android -keypass android \
-            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | tail -1)
-          "$BT/apksigner" sign --ks "$RUNNER_TEMP/d.jks" \
-            --ks-pass pass:android --key-pass pass:android --out "$APK.signed" "$APK"
-          mv "$APK.signed" "$APK"
-          "$BT/apksigner" verify --print-certs "$APK" | head -5
+          VERSION=$(node -p "require('./package.json').version")
+          OUT="netease-export-${VERSION}-arm64.apk"
+          "$BT/apksigner" sign \
+            --key signing/key.pk8 --cert signing/cert.pem \
+            --min-sdk-version 24 \
+            --out "$OUT" "$APK"
+          "$BT/apksigner" verify --print-certs "$OUT" | head -6
+          ls -lh "$OUT"
 
-      - name: 上传 APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: netease-export-apk
-          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          path: netease-export-*-arm64.apk
           if-no-files-found: error

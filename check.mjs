@@ -7,7 +7,7 @@ const BASE_OUT = path.join(NC_ROOT, 'out2');
 const STAGE_DIR = path.join(BASE_OUT, 'staging');
 const USE_STAGE = process.env.NC_STAGE === '1' || fs.existsSync(path.join(STAGE_DIR, 'playlists_full.json'));
 const OUT = process.env.NC_OUT_DIR || (USE_STAGE ? STAGE_DIR : BASE_OUT);
-const ZIP = process.env.NC_ZIP || '/workspace/mounts/Download/网易云歌单导出.zip';
+const ZIP = process.env.NC_ZIP || path.resolve(process.env.NC_DEST || path.join(NC_ROOT, '导出')) + '.zip';
 
 const report = [];
 const problems = [];

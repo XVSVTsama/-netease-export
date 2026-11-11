@@ -1,12 +1,12 @@
 {
   "name": "netease-export",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "description": "网易云歌单 / 收藏导出与本地面板",
   "author": "XVSVTsama",
   "license": "MIT",
-  "main": "main.js",
+  "main": "main.cjs",
   "scripts": {
     "panel": "node web/server.mjs",
     "start": "electron .",
@@ -15,6 +15,7 @@
     "sync": "node runner.mjs sync",
     "tidy": "node runner.mjs tidy",
     "check": "node runner.mjs check",
+    "build": "node build.mjs",
     "tauri": "tauri",
     "dist:android": "tauri android build --apk",
     "android:init": "tauri android init --ci"
@@ -22,28 +23,29 @@
   "build": {
     "appId": "app.xvsvt.netease.export",
     "productName": "网易云导出",
+    "asar": false,
     "files": [
-      "main.js",
+      "main.cjs",
       "web/**/*",
       "*.mjs",
       "build.sh",
       "accounts.example.json"
     ],
     "extraMetadata": {
-      "main": "main.js"
+      "main": "main.cjs"
     },
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "dir",
           "arch": [
             "x64"
           ]
         }
       ]
     },
-    "portable": {
-      "artifactName": "netease-export-${version}.exe"
+    "directories": {
+      "output": "dist"
     }
   },
   "devDependencies": {
