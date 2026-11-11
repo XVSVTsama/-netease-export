@@ -1,14 +1,20 @@
 {
-  "name": "netease-export-desktop",
+  "name": "netease-export",
   "version": "1.0.0",
-  "description": "网易云歌单/收藏导出桌面版",
-  "main": "main.js",
+  "private": true,
+  "type": "module",
+  "description": "网易云歌单 / 收藏导出与本地面板",
   "author": "XVSVTsama",
   "license": "MIT",
+  "main": "main.js",
   "scripts": {
+    "panel": "node web/server.mjs",
     "start": "electron .",
-    "dist:win": "electron-builder --win dir",
-    "dist:dir": "electron-builder --dir"
+    "dist:win": "electron-builder --win portable",
+    "dist:dir": "electron-builder --dir",
+    "sync": "node runner.mjs sync",
+    "tidy": "node runner.mjs tidy",
+    "check": "node runner.mjs check"
   },
   "build": {
     "appId": "app.xvsvt.netease.export",
@@ -26,17 +32,21 @@
     "win": {
       "target": [
         {
-          "target": "dir",
+          "target": "portable",
           "arch": [
             "x64"
           ]
         }
       ]
+    },
+    "portable": {
+      "artifactName": "netease-export-${version}.exe"
     }
   },
   "devDependencies": {
     "electron": "^33.0.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^25.0.0",
+    "@tauri-apps/cli": "^2"
   },
   "dependencies": {
     "@fontsource/noto-sans-arabic": "^5.3.0",

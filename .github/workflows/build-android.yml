@@ -16,6 +16,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
@@ -30,16 +34,14 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;26.1.10909125" >/dev/null 2>&1 || true
           echo "NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
-      - name: 安装 Tauri CLI
-        run: npm i -g @tauri-apps/cli@^2
+      - name: 安装项目依赖（含 Tauri CLI）
+        run: npm install --no-audit --no-fund
 
       - name: 初始化 Android 工程
-        working-directory: src-tauri
-        run: tauri android init --ci
+        run: npx tauri android init --ci
 
       - name: 构建 APK
-        working-directory: src-tauri
-        run: tauri android build --apk --target aarch64
+        run: npx tauri android build --apk --target aarch64
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4

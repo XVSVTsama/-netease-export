@@ -3,122 +3,194 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
 <title>网易云导出</title>
 <style>
-:root{--bg:#fff;--card:#f5f5f7;--text:#1d1d1f;--muted:#6e6e73;--accent:#fa2d48;--line:#e5e5ea}
-@media (prefers-color-scheme: dark){:root{--bg:#000;--card:#1c1c1e;--text:#f5f5f7;--muted:#8e8e93;--line:#2c2c2e}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,"PingFang SC",system-ui,sans-serif;padding:20px 16px 40px}
+:root{
+  --bg:#ffffff; --card:#f5f5f7; --text:#1d1d1f; --muted:#6e6e73;
+  --accent:#fa2d48; --line:#e5e5ea; --ok:#1db954; --warn:#c98a00;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#000;--card:#1c1c1e;--text:#f5f5f7;--muted:#8e8e93;--line:#2c2c2e;--ok:#30d158;--warn:#ffd60a}
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",system-ui,sans-serif;
+  padding:calc(16px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
+  min-height:100vh;
+}
 h1{font-size:24px;margin:0 0 4px;letter-spacing:-.02em}
-.sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+.sub{color:var(--muted);font-size:13px;margin-bottom:16px;word-break:break-all}
 .card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
-button{padding:12px 16px;border-radius:12px;border:0;background:var(--accent);color:#fff;font-size:15px;font-weight:600}
-button.ghost{background:var(--card);color:var(--text)}
-button:disabled{opacity:.45}
-img{width:min(70vw,280px);display:block;margin:14px auto;background:#fff;padding:10px;border-radius:12px}
-.row{display:flex;gap:8px;align-items:center}
-.list{margin-top:6px}
-.item{display:flex;justify-content:space-between;gap:10px;padding:10px 2px;border-top:1px solid var(--line);font-size:14px}
+.card h2{font-size:15px;margin:0 0 10px;font-weight:600}
+button{
+  padding:12px 16px;border-radius:12px;border:0;background:var(--accent);color:#fff;
+  font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;min-height:44px
+}
+button.ghost{background:var(--bg);color:var(--text);border:1px solid var(--line)}
+button:disabled{opacity:.4;cursor:default}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.qr-wrap{text-align:center}
+.qr-wrap img{
+  width:min(64vw,260px);height:auto;display:block;margin:14px auto 8px;
+  background:#fff;padding:10px;border-radius:12px
+}
+.state{color:var(--muted);font-size:13px;min-height:20px;text-align:center}
+.state.err{color:var(--accent)}
+.state.ok{color:var(--ok)}
+.list{max-height:min(52vh,420px);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.item{display:flex;justify-content:space-between;gap:10px;padding:11px 2px;border-top:1px solid var(--line);font-size:14px}
 .item:first-child{border-top:0}
-.item .n{flex:1;word-break:break-all}
-.item .c{color:var(--muted);font-size:12.5px;white-space:nowrap}
-.state{color:var(--muted);font-size:13px;min-height:20px}
+.item .n{flex:1;word-break:break-word}
+.item .c{color:var(--muted);font-size:12.5px;white-space:nowrap;flex:0 0 auto}
+.badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-right:6px;vertical-align:1px}
+.empty{color:var(--muted);font-size:13.5px;text-align:center;padding:18px 0}
+.hint{color:var(--muted);font-size:12px;margin-top:8px;text-align:center}
 </style>
 </head>
 <body>
 <h1>网易云导出</h1>
-<div class="sub" id="sub">未登录</div>
+<div class="sub" id="sub">正在检查登录状态…</div>
 
-<div class="card" id="loginCard">
+<section class="card" id="loginCard">
+  <h2>登录</h2>
   <div class="row">
     <button id="btnLogin">扫码登录</button>
     <button class="ghost" id="btnAccount">检查登录态</button>
   </div>
+  <div id="qrBox" class="qr-wrap"></div>
   <div class="state" id="state"></div>
-  <div id="qrBox"></div>
-</div>
+  <div class="hint">若提示「无法登录」，多为二维码过期，重新生成即可</div>
+</section>
 
-<div class="card" id="listCard" style="display:none">
-  <div class="row" style="justify-content:space-between">
-    <strong>我的歌单</strong>
-    <button class="ghost" id="btnRefresh">刷新</button>
+<section class="card" id="listCard" hidden>
+  <div class="row" style="justify-content:space-between;margin-bottom:8px">
+    <h2 style="margin:0">我的歌单</h2>
+    <button class="ghost" id="btnRefresh" style="padding:8px 14px;min-height:36px;font-size:13.5px">刷新</button>
   </div>
-  <div class="list" id="list"></div>
-</div>
+  <div class="list" id="list"><div class="empty">加载中…</div></div>
+</section>
 
 <script>
 const inv = (cmd, args = {}) => window.__TAURI__.core.invoke(cmd, args);
 const $ = id => document.getElementById(id);
 
 let uid = 0;
-let timer = null;
+let nickname = '';
+let pollTimer = null;
+let busy = false;
 
-async function checkAccount() {
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function setState(text, kind = '') {
+  const el = $('state');
+  el.textContent = text;
+  el.className = 'state' + (kind ? ' ' + kind : '');
+}
+
+function stopPoll() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function checkAccount(silent = false) {
   try {
     const a = await inv('account');
-    $('sub').textContent = a.logged ? `已登录：${a.nickname}（uid ${a.uid}）` : '未登录';
     if (a.logged) {
-      uid = a.uid;
-      $('loginCard').style.display = 'none';
-      $('listCard').style.display = 'block';
-      await loadPlaylists();
+      uid = a.uid || 0;
+      nickname = a.nickname || '';
+      $('sub').textContent = nickname ? `已登录：${nickname}（uid ${uid}）` : `已登录（uid ${uid}）`;
+      $('loginCard').hidden = true;
+      $('listCard').hidden = false;
+      await loadPlaylists(silent);
+    } else {
+      $('sub').textContent = '未登录';
+      $('loginCard').hidden = false;
+      $('listCard').hidden = true;
     }
   } catch (e) {
-    $('state').textContent = '检查失败：' + e;
+    $('sub').textContent = '未登录';
+    if (!silent) setState('检查登录态失败：' + e, 'err');
   }
 }
 
-async function loadPlaylists() {
-  $('list').innerHTML = '<div class="item"><span class="n">加载中…</span></div>';
+async function loadPlaylists(silent = false) {
+  if (!silent) $('list').innerHTML = '<div class="empty">加载中…</div>';
   try {
     const r = await inv('playlists', { uid });
-    $('list').innerHTML = r.items.map(p =>
-      `<div class="item"><span class="n">${p.mine ? '' : '（收藏）'}${escapeHtml(p.name)}</span><span class="c">${p.count} 首</span></div>`
-    ).join('') || '<div class="item"><span class="n">没有歌单</span></div>';
-    $('sub').textContent = `已登录：${$('sub').textContent.split('：')[1] || ''} · 歌单 ${r.total} 个`;
+    const items = r.items || [];
+    if (!items.length) {
+      $('list').innerHTML = '<div class="empty">这个账号下没有歌单</div>';
+    } else {
+      $('list').innerHTML = items.map(p => {
+        const tags = [];
+        if (!p.mine) tags.push('<span class="badge">收藏</span>');
+        if (p.privacy === 10) tags.push('<span class="badge">私密</span>');
+        return `<div class="item"><span class="n">${tags.join('')}${esc(p.name)}</span><span class="c">${p.count} 首</span></div>`;
+      }).join('');
+    }
+    $('sub').textContent = (nickname ? `已登录：${nickname}（uid ${uid}）` : `已登录（uid ${uid}）`) + ` · 共 ${r.total} 个歌单`;
+    setState('');
   } catch (e) {
-    $('list').innerHTML = `<div class="item"><span class="n">加载失败：${escapeHtml(String(e))}</span></div>`;
+    $('list').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`;
   }
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 async function startLogin() {
-  $('state').textContent = '生成二维码…';
+  if (busy) return;
+  busy = true;
+  $('btnLogin').disabled = true;
+  stopPoll();
+  $('qrBox').innerHTML = '';
+  setState('正在生成二维码…');
   try {
     const q = await inv('qr_new');
-    $('qrBox').innerHTML = `<img src="${q.img}" alt="二维码">`;
-    $('state').textContent = '用手机网易云扫码，并在手机上点「确认登录」';
-    clearInterval(timer);
-    timer = setInterval(async () => {
+    $('qrBox').innerHTML = `<img src="${q.img}" alt="登录二维码">`;
+    setState('用手机网易云扫码，并在手机上点「确认登录」');
+    pollTimer = setInterval(async () => {
       try {
         const s = await inv('qr_poll');
-        if (s.code === 802) $('state').textContent = '已扫码，请在手机上确认…';
+        if (s.code === 802) setState('已扫码，请在手机上确认…');
         else if (s.code === 803) {
-          clearInterval(timer);
-          $('state').textContent = '登录成功';
+          stopPoll();
+          setState('登录成功', 'ok');
           $('qrBox').innerHTML = '';
-          setTimeout(checkAccount, 400);
+          busy = false;
+          $('btnLogin').disabled = false;
+          setTimeout(() => checkAccount(), 300);
         } else if (s.code === 800 || s.code === 8821) {
-          clearInterval(timer);
-          $('state').textContent = '二维码已失效，请重新生成';
+          stopPoll();
+          setState('二维码已失效，请重新生成', 'err');
+          $('qrBox').innerHTML = '';
+          busy = false;
+          $('btnLogin').disabled = false;
         }
       } catch (e) {
-        clearInterval(timer);
-        $('state').textContent = '轮询失败：' + e;
+        stopPoll();
+        setState('轮询失败：' + e, 'err');
+        busy = false;
+        $('btnLogin').disabled = false;
       }
     }, 2000);
   } catch (e) {
-    $('state').textContent = '生成失败：' + e;
+    setState('生成二维码失败：' + e, 'err');
+    busy = false;
+  } finally {
+    $('btnLogin').disabled = false;
   }
 }
 
 $('btnLogin').onclick = startLogin;
-$('btnAccount').onclick = checkAccount;
-$('btnRefresh').onclick = loadPlaylists;
-checkAccount();
+$('btnAccount').onclick = async () => {
+  setState('检查中…');
+  await checkAccount();
+  if ($('loginCard').hidden) setState('');
+};
+$('btnRefresh').onclick = () => loadPlaylists();
+
+window.addEventListener('beforeunload', stopPoll);
+checkAccount(true);
 </script>
 </body>
 </html>
