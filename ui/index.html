@@ -99,6 +99,18 @@ input:focus,textarea:focus{border-color:var(--accent)}
   <div class="row" style="margin-top:10px"><button class="ghost" id="btnLogout">退出登录</button></div>
 </section>
 
+<section class="card" id="detailCard" hidden>
+  <div class="row" style="justify-content:space-between;margin-bottom:6px">
+    <button class="ghost" id="btnBack" style="padding:8px 12px;min-height:34px;font-size:13px;flex:0 0 auto">← 返回</button>
+    <button class="ghost" id="btnExportCsv" style="padding:8px 12px;min-height:34px;font-size:13px;flex:0 0 auto">导出 CSV</button>
+    <button class="ghost" id="btnExportMd" style="padding:8px 12px;min-height:34px;font-size:13px;flex:0 0 auto">导出 MD</button>
+  </div>
+  <h2 id="detailTitle" style="margin:0 0 2px">歌单</h2>
+  <div class="sub" id="detailMeta" style="margin:0 0 8px"></div>
+  <div class="list" id="tracks"><div class="empty">加载中…</div></div>
+  <div class="state" id="exportState"></div>
+</section>
+
 <script>
 const inv = (cmd, args = {}) => window.__TAURI__.core.invoke(cmd, args);
 const $ = id => document.getElementById(id);
@@ -154,8 +166,11 @@ async function loadPlaylists(silent = false) {
       const tags = [];
       if (!p.mine) tags.push('<span class="badge">收藏</span>');
       if (p.privacy === 10) tags.push('<span class="badge">私密</span>');
-      return `<div class="item"><span class="n">${tags.join('')}${esc(p.name)}</span><span class="c">${p.count} 首</span></div>`;
+      return `<div class="item" data-id="${p.id}" data-name="${esc(p.name)}" style="cursor:pointer"><span class="n">${tags.join('')}${esc(p.name)}</span><span class="c">${p.count} 首 ›</span></div>`;
     }).join('') : '<div class="empty">这个账号下没有歌单</div>';
+    document.querySelectorAll('#list [data-id]').forEach(el => {
+      el.onclick = () => openPlaylist(Number(el.dataset.id), el.dataset.name);
+    });
     $('sub').textContent = (nickname ? `已登录：${nickname}（uid ${uid}）` : `已登录（uid ${uid}）`) + ` · 共 ${r.total} 个歌单`;
   } catch (e) {
     $('list').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`;
@@ -214,6 +229,57 @@ $('btnSmsSent').onclick = async () => {
     setState(r.message || (r.ok ? '验证码已发送' : '发送失败'), r.ok ? 'ok' : 'err');
   } catch (e) { setState(String(e), 'err'); }
 };
+let currentId = 0;
+
+async function openPlaylist(id, name) {
+  currentId = id;
+  $('detailCard').hidden = false;
+  $('listCard').hidden = true;
+  $('detailTitle').textContent = name || '歌单';
+  $('detailMeta').textContent = '正在拉取曲目与厂牌…';
+  $('tracks').innerHTML = '<div class="empty">加载中…（曲目多时需要一会儿）</div>';
+  $('exportState').textContent = '';
+  try {
+    const d = await inv('playlist_detail', { id });
+    const rows = d.rows || [];
+    $('detailTitle').textContent = d.name || name || '歌单';
+    $('detailMeta').textContent = `本地曲目 ${d.count || rows.length} 首`;
+    $('tracks').innerHTML = rows.length ? rows.map((r, i) => {
+      const flag = r.ncr ? '<span class="badge">仅其他版本</span>' : '';
+      return `<div class="item"><span class="n">${i + 1}. ${flag}${esc(r.name)}<br><span style="color:var(--muted);font-size:12px">${esc(r.ar)} · ${esc(r.al)} · ${esc(r.company || '未标注厂牌')}</span></span><span class="c">${fmtDur(r.dur)}</span></div>`;
+    }).join('') : '<div class="empty">这个歌单没有曲目</div>';
+  } catch (e) {
+    $('detailMeta').textContent = '';
+    $('tracks').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`;
+  }
+}
+
+function fmtDur(ms) {
+  if (!ms || ms <= 0) return '--:--';
+  const t = Math.round(ms / 1000);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+}
+
+async function doExport(format) {
+  if (!currentId) return;
+  $('exportState').textContent = '导出中…';
+  $('exportState').className = 'state';
+  $('btnExportCsv').disabled = true; $('btnExportMd').disabled = true;
+  try {
+    const r = await inv('export_playlist', { id: currentId, format });
+    $('exportState').className = 'state ok';
+    $('exportState').innerHTML = `已导出 ${r.count} 首<br>` + r.paths.map(p => `<span style="font-size:12px">${esc(p)}</span>`).join('<br>');
+  } catch (e) {
+    $('exportState').className = 'state err';
+    $('exportState').textContent = '导出失败：' + e;
+  } finally {
+    $('btnExportCsv').disabled = false; $('btnExportMd').disabled = false;
+  }
+}
+
+$('btnBack').onclick = () => { $('detailCard').hidden = true; $('listCard').hidden = false; currentId = 0; };
+$('btnExportCsv').onclick = () => doExport('csv');
+$('btnExportMd').onclick = () => doExport('md');
 $('btnRefresh').onclick = () => loadPlaylists();
 $('btnLogout').onclick = async () => {
   await inv('logout');
