@@ -40,8 +40,8 @@ jobs:
       - name: 初始化 Android 工程
         run: npx tauri android init --ci
 
-      - name: 构建 APK
-        run: npx tauri android build --apk --target aarch64
+      - name: 构建 APK（debug，含 debug 签名，可直接安装）
+        run: npx tauri android build --apk --debug
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4
