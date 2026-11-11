@@ -282,6 +282,38 @@ pub async fn collected_albums(c: &Client) -> Result<Value, String> {
     Ok(json!({ "total": items.len(), "items": items }))
 }
 
+/* ---------------- 专辑曲目 ---------------- */
+
+pub async fn album_detail(c: &Client, id: i64) -> Result<Value, String> {
+    // 注意：/weapi/v1/album/{id} 的 songs 已恒为空，必须用 /weapi/album/{id}
+    let r = c.weapi(&format!("/weapi/album/{}", id), json!({})).await?;
+    let a = &r["album"];
+    if !a.is_object() { return Err(format!("专辑不存在或接口拒绝: {}", r["code"])); }
+    let songs = a["songs"].as_array().cloned().unwrap_or_default();
+    let mut rows = Vec::new();
+    for s in &songs {
+        let (name, ar, al, al_id, dur, ncr) = song_of_album(s);
+        rows.push(json!({
+            "id": s["id"].as_i64().unwrap_or(0),
+            "name": name, "ar": ar, "al": al, "alId": al_id, "dur": dur,
+            "ncr": ncr == 1, "company": a["company"].as_str().unwrap_or(""),
+            "pop": s["popularity"].as_i64().unwrap_or(0),
+            "alia": s["alias"].as_array().map(|x| x.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(" / ")).unwrap_or_default(),
+            "mv": s["mvid"].as_i64().unwrap_or(0),
+            "fee": s["fee"].as_i64().unwrap_or(0),
+        }));
+    }
+    Ok(json!({
+        "id": id,
+        "name": a["name"].as_str().unwrap_or(""),
+        "artists": a["artists"].as_array().map(|x| x.iter().filter_map(|v| v["name"].as_str()).collect::<Vec<_>>().join(" / ")).unwrap_or_default(),
+        "company": a["company"].as_str().unwrap_or(""),
+        "publishTime": a["publishTime"].as_i64().unwrap_or(0),
+        "count": rows.len(),
+        "rows": rows,
+    }))
+}
+
 /* ---------------- 听歌排行 ---------------- */
 
 pub async fn play_record(c: &Client, uid: i64, week: bool) -> Result<Value, String> {

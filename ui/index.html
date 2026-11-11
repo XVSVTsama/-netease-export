@@ -176,6 +176,18 @@ input:focus,textarea:focus{border-color:var(--accent)}
   <div class="row" style="margin-top:12px"><button class="ghost" id="btnLogout">退出登录</button></div>
 </section>
 
+<section class="card" id="albumDetailCard" hidden>
+  <div class="row" style="justify-content:space-between;margin-bottom:6px">
+    <button class="ghost small" id="btnAlbumBack">← 返回</button>
+    <button class="ghost small" id="btnAlbumExportCsv">导出 CSV</button>
+    <button class="ghost small" id="btnAlbumExportMd">导出 MD</button>
+  </div>
+  <h2 id="albumTitle" style="margin:0 0 2px">专辑</h2>
+  <div class="sub" id="albumMeta" style="margin:0 0 8px"></div>
+  <div class="list" id="albumTracks"><div class="empty">加载中…</div></div>
+  <div class="state" id="albumExportState"></div>
+</section>
+
 <section class="card" id="detailCard" hidden>
   <div class="row" style="justify-content:space-between;margin-bottom:6px">
     <button class="ghost small" id="btnBack">← 返回</button>
@@ -355,6 +367,40 @@ async function openPlaylist(id, name){
   } catch (e) { $('detailMeta').textContent=''; $('tracks').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`; }
 }
 
+/* ---------- 专辑详情 ---------- */
+let currentAlbum = 0;
+
+async function openAlbum(id, name) {
+  currentAlbum = id;
+  $('albumDetailCard').hidden = false; $('mainCard').hidden = true;
+  $('albumTitle').textContent = name || '专辑';
+  $('albumMeta').textContent = '正在拉取曲目…';
+  $('albumTracks').innerHTML = '<div class="empty">加载中…</div>';
+  setState('albumExportState', '');
+  try {
+    const d = await inv('album_detail', { id });
+    $('albumTitle').textContent = d.name || name;
+    const t = d.publishTime ? new Date(d.publishTime).toISOString().slice(0, 10) : '—';
+    $('albumMeta').textContent = `${d.artists || '未知'} · ${d.company || '未标注厂牌'} · ${t} · ${d.count} 首`;
+    const rows = d.rows || [];
+    $('albumTracks').innerHTML = rows.length ? rows.map((r, i) =>
+      `<div class="item"><span class="n">${i+1}. ${esc(disp(r.name))}<br><span style="color:var(--muted);font-size:12px">${esc(r.ar || d.artists)} · ${esc(r.al)}</span></span><span class="c">${fmtDur(r.dur)}</span></div>`
+    ).join('') : '<div class="empty">专辑没有曲目</div>';
+  } catch (e) {
+    $('albumMeta').textContent = '';
+    $('albumTracks').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`;
+  }
+}
+
+async function exportAlbum(format) {
+  if (!currentAlbum) return;
+  setState('albumExportState', '导出中…');
+  try {
+    const r = await inv('export_album', { id: currentAlbum, format });
+    setState('albumExportState', `已导出 ${r.count} 首：${r.paths.join(' / ')}`, 'ok');
+  } catch (e) { setState('albumExportState', '导出失败：' + e, 'err'); }
+}
+
 /* ---------- 收藏歌单 ---------- */
 function renderFavlist() {
   $('favlist').innerHTML = FAVLIST.length ? FAVLIST.map((p, i) =>
@@ -369,7 +415,7 @@ async function exportFavlist() {
   const head = '序号,歌单,作者,曲目数,歌单ID\n';
   const rows = FAVLIST.map((p, i) => [i + 1, e(p.name), e(p.creator), p.count, p.id].join(',')).join('\n');
   try {
-    const r = await inv('save_text', { name: '收藏歌单.csv', content: '\ufeff' + head + rows + '\n' });
+    const r = await inv('save_text', { name: '表格/收藏歌单.csv', content: '\ufeff' + head + rows + '\n' });
     setState('favState', '已导出：' + r.paths.join(' / '), 'ok');
   } catch (e2) { setState('favState', '导出失败：' + e2, 'err'); }
 }
@@ -405,8 +451,9 @@ async function loadAlbums(){
     const r = await inv('collected_albums');
     ALBUMS = r.items || [];
     $('albums').innerHTML = ALBUMS.length ? ALBUMS.map((a,i) =>
-      `<div class="item"><span class="n">${i+1}. ${esc(a.name)}<br><span style="color:var(--muted);font-size:12px">${esc(a.artists)} · ${esc(a.company||'未标注厂牌')}</span></span><span class="c">${a.size} 首</span></div>`
+      `<div class="item" data-aid="${a.id}" data-aname="${esc(a.name)}" style="cursor:pointer"><span class="n">${i+1}. ${esc(disp(a.name))}<br><span style="color:var(--muted);font-size:12px">${esc(a.artists)} · ${esc(a.company||'未标注厂牌')}</span></span><span class="c">${a.size} 首 ›</span></div>`
     ).join('') : '<div class="empty">没有收藏专辑</div>';
+    document.querySelectorAll('#albums [data-aid]').forEach(el => el.onclick = () => openAlbum(Number(el.dataset.aid), el.dataset.aname));
     setState('albumState', `共 ${ALBUMS.length} 张`, 'ok');
   } catch (e) { $('albums').innerHTML = `<div class="empty">加载失败：${esc(e)}</div>`; }
 }
@@ -420,7 +467,7 @@ async function exportAlbums(){
     return [i+1, e(a.name), e(a.artists), a.size, e(a.company), d, a.id].join(',');
   }).join('\n');
   try {
-    const r = await inv('save_text', { name: '收藏专辑.csv', content: '\ufeff' + head + rows + '\n' });
+    const r = await inv('save_text', { name: '表格/收藏专辑.csv', content: '\ufeff' + head + rows + '\n' });
     setState('albumState', '已导出：' + r.paths.join(' / '), 'ok');
   } catch (e) { setState('albumState', '导出失败：' + e, 'err'); }
 }
@@ -445,7 +492,7 @@ async function exportRank(){
   const head = '排名,播放次数,歌名,制作人/团体,专辑,时长\n';
   const e = v => `"${String(v??'').replace(/"/g,'""')}"`;
   const rows = RANK.map(x => [x.rank, x.playCount, e(x.name), e(x.ar), e(x.al), fmtDur(x.dur)].join(',')).join('\n');
-  const name = `听歌排行_${RANK_WEEK ? '最近一周' : '全部时间'}.csv`;
+  const name = `表格/听歌排行_${RANK_WEEK ? '最近一周' : '全部时间'}.csv`;
   try {
     const r = await inv('save_text', { name, content: '\ufeff' + head + rows + '\n' });
     setState('rankState', '已导出：' + r.paths.join(' / '), 'ok');
@@ -481,6 +528,9 @@ $('btnAllCsv').onclick = () => exportAll('csv');
 $('btnAllMd').onclick = () => exportAll('md');
 $('btnAlbumCsv').onclick = exportAlbums;
 $('btnFavCsv').onclick = exportFavlist;
+$('btnAlbumBack').onclick = () => { $('albumDetailCard').hidden = true; $('mainCard').hidden = false; currentAlbum = 0; };
+$('btnAlbumExportCsv').onclick = () => exportAlbum('csv');
+$('btnAlbumExportMd').onclick = () => exportAlbum('md');
 $('btnPrivacy').onclick = togglePrivacy;
 document.querySelectorAll('#dispModes button').forEach(b => b.onclick = () => setDisp(b.dataset.d));
 $('btnRankCsv').onclick = exportRank;

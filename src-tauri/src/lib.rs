@@ -35,6 +35,11 @@ fn sanitize(name: &str) -> String {
     if t.is_empty() { "未命名".to_string() } else { t.chars().take(50).collect() }
 }
 
+/// 允许 "子目录/文件名"，逐段清洗
+fn sanitize_path(name: &str) -> String {
+    name.split('/').filter(|s| !s.is_empty()).map(sanitize).collect::<Vec<_>>().join("/")
+}
+
 fn fmt_dur(ms: i64) -> String {
     if ms <= 0 { return "--:--".into(); }
     let total = (ms + 500) / 1000;
@@ -169,6 +174,23 @@ async fn logout(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Val
     Ok(serde_json::json!({ "ok": true }))
 }
 
+#[tauri::command]
+async fn album_detail(state: State<'_, AppState>, id: i64) -> Result<Value, String> {
+    api::album_detail(&state.client, id).await
+}
+
+/// 导出专辑曲目
+#[tauri::command]
+async fn export_album(app: tauri::AppHandle, state: State<'_, AppState>, id: i64, format: String) -> Result<Value, String> {
+    let d = api::album_detail(&state.client, id).await?;
+    let content = if format == "md" { to_md(&d) } else { to_csv(&d) };
+    let name = sanitize(d["name"].as_str().unwrap_or("album"));
+    let ext = if format == "md" { "md" } else { "csv" };
+    let (paths, _) = write_both(&app, &format!("收藏专辑/{}.{}", name, ext), &content);
+    if paths.is_empty() { return Err("写入文件失败".into()); }
+    Ok(serde_json::json!({ "ok": true, "paths": paths, "count": d["count"] }))
+}
+
 /// 导出歌单：format = csv | md，返回保存路径列表
 #[tauri::command]
 async fn export_playlist(app: tauri::AppHandle, state: State<'_, AppState>, id: i64, format: String) -> Result<Value, String> {
@@ -176,7 +198,7 @@ async fn export_playlist(app: tauri::AppHandle, state: State<'_, AppState>, id: 
     let content = if format == "md" { to_md(&d) } else { to_csv(&d) };
     let name = sanitize(d["name"].as_str().unwrap_or("playlist"));
     let ext = if format == "md" { "md" } else { "csv" };
-    let file = format!("{}.{}", name, ext);
+    let file = format!("歌单/{}.{}", name, ext);
 
     let mut saved: Vec<String> = Vec::new();
 
@@ -277,7 +299,7 @@ async fn export_special(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
 }
 
 fn write_both(app: &tauri::AppHandle, name: &str, content: &str) -> (Vec<String>, ()) {
-    let file = sanitize(name);
+    let file = sanitize_path(name);
     let mut saved: Vec<String> = Vec::new();
     if let Ok(dir) = app.path().app_data_dir() {
         let out = dir.join("exports");
@@ -301,21 +323,29 @@ async fn zip_exports(app: tauri::AppHandle) -> Result<Value, String> {
     use std::io::Write;
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("exports");
     if !dir.exists() { return Err("还没有导出任何文件".into()); }
-    let mut entries: Vec<_> = fs::read_dir(&dir).map_err(|e| e.to_string())?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().map(|x| x != "zip").unwrap_or(true))
-        .collect();
-    entries.sort();
+    fn collect(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<(std::path::PathBuf, String)>) {
+        if let Ok(rd) = fs::read_dir(dir) {
+            for e in rd.filter_map(|e| e.ok()) {
+                let p = e.path();
+                if p.is_dir() { collect(&p, base, out); continue; }
+                if p.extension().map(|x| x == "zip").unwrap_or(false) { continue; }
+                if let Ok(rel) = p.strip_prefix(base) {
+                    out.push((p.clone(), rel.to_string_lossy().replace('\\', "/")));
+                }
+            }
+        }
+    }
+    let mut entries: Vec<(std::path::PathBuf, String)> = Vec::new();
+    collect(&dir, &dir, &mut entries);
+    entries.sort_by(|a, b| a.1.cmp(&b.1));
     if entries.is_empty() { return Err("导出目录里没有文件".into()); }
     let zip_path = dir.join("网易云导出.zip");
     {
         let file = fs::File::create(&zip_path).map_err(|e| e.to_string())?;
         let mut zw = zip::ZipWriter::new(file);
         let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        for p in &entries {
-            let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
-            zw.start_file(name, opts).map_err(|e| e.to_string())?;
+        for (p, rel) in &entries {
+            zw.start_file(rel.as_str(), opts).map_err(|e| e.to_string())?;
             let data = fs::read(p).map_err(|e| e.to_string())?;
             zw.write_all(&data).map_err(|e| e.to_string())?;
         }
@@ -356,7 +386,7 @@ pub fn run() {
             qr_new, qr_poll, account, playlists, playlist_detail,
             login_cookie, login_phone_password, sms_sent, login_phone_captcha,
             login_email, logout, export_playlist, collected_albums, play_record, save_text,
-            special_items, export_special, zip_exports
+            special_items, export_special, zip_exports, album_detail, export_album
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
