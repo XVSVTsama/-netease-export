@@ -12,3 +12,10 @@
 .badge{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent);margin-right:6px;font-weight:500}
 .track .tail{font-size:12px;color:var(--muted);flex:0 0 auto;align-self:flex-start;margin-top:2px}
 .row .tail{white-space:nowrap}
+
+/* Android WebView：密码框与边到边安全区 */
+input[type="password"]{width:100%;padding:11px 14px;border-radius:12px;border:1px solid var(--line);
+  background:var(--bg-elev);color:var(--text);font-size:14.5px;font-family:inherit;outline:none}
+input[type="password"]:focus{border-color:var(--accent)}
+header.top{padding-top:env(safe-area-inset-top,0px)}
+.tabs{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
