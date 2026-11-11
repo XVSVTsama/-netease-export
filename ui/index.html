@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>网易云导出</title>
+<style>
+:root{--bg:#fff;--card:#f5f5f7;--text:#1d1d1f;--muted:#6e6e73;--accent:#fa2d48;--line:#e5e5ea}
+@media (prefers-color-scheme: dark){:root{--bg:#000;--card:#1c1c1e;--text:#f5f5f7;--muted:#8e8e93;--line:#2c2c2e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,"PingFang SC",system-ui,sans-serif;padding:20px 16px 40px}
+h1{font-size:24px;margin:0 0 4px;letter-spacing:-.02em}
+.sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
+button{padding:12px 16px;border-radius:12px;border:0;background:var(--accent);color:#fff;font-size:15px;font-weight:600}
+button.ghost{background:var(--card);color:var(--text)}
+button:disabled{opacity:.45}
+img{width:min(70vw,280px);display:block;margin:14px auto;background:#fff;padding:10px;border-radius:12px}
+.row{display:flex;gap:8px;align-items:center}
+.list{margin-top:6px}
+.item{display:flex;justify-content:space-between;gap:10px;padding:10px 2px;border-top:1px solid var(--line);font-size:14px}
+.item:first-child{border-top:0}
+.item .n{flex:1;word-break:break-all}
+.item .c{color:var(--muted);font-size:12.5px;white-space:nowrap}
+.state{color:var(--muted);font-size:13px;min-height:20px}
+</style>
+</head>
+<body>
+<h1>网易云导出</h1>
+<div class="sub" id="sub">未登录</div>
+
+<div class="card" id="loginCard">
+  <div class="row">
+    <button id="btnLogin">扫码登录</button>
+    <button class="ghost" id="btnAccount">检查登录态</button>
+  </div>
+  <div class="state" id="state"></div>
+  <div id="qrBox"></div>
+</div>
+
+<div class="card" id="listCard" style="display:none">
+  <div class="row" style="justify-content:space-between">
+    <strong>我的歌单</strong>
+    <button class="ghost" id="btnRefresh">刷新</button>
+  </div>
+  <div class="list" id="list"></div>
+</div>
+
+<script>
+const inv = (cmd, args = {}) => window.__TAURI__.core.invoke(cmd, args);
+const $ = id => document.getElementById(id);
+
+let uid = 0;
+let timer = null;
+
+async function checkAccount() {
+  try {
+    const a = await inv('account');
+    $('sub').textContent = a.logged ? `已登录：${a.nickname}（uid ${a.uid}）` : '未登录';
+    if (a.logged) {
+      uid = a.uid;
+      $('loginCard').style.display = 'none';
+      $('listCard').style.display = 'block';
+      await loadPlaylists();
+    }
+  } catch (e) {
+    $('state').textContent = '检查失败：' + e;
+  }
+}
+
+async function loadPlaylists() {
+  $('list').innerHTML = '<div class="item"><span class="n">加载中…</span></div>';
+  try {
+    const r = await inv('playlists', { uid });
+    $('list').innerHTML = r.items.map(p =>
+      `<div class="item"><span class="n">${p.mine ? '' : '（收藏）'}${escapeHtml(p.name)}</span><span class="c">${p.count} 首</span></div>`
+    ).join('') || '<div class="item"><span class="n">没有歌单</span></div>';
+    $('sub').textContent = `已登录：${$('sub').textContent.split('：')[1] || ''} · 歌单 ${r.total} 个`;
+  } catch (e) {
+    $('list').innerHTML = `<div class="item"><span class="n">加载失败：${escapeHtml(String(e))}</span></div>`;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function startLogin() {
+  $('state').textContent = '生成二维码…';
+  try {
+    const q = await inv('qr_new');
+    $('qrBox').innerHTML = `<img src="${q.img}" alt="二维码">`;
+    $('state').textContent = '用手机网易云扫码，并在手机上点「确认登录」';
+    clearInterval(timer);
+    timer = setInterval(async () => {
+      try {
+        const s = await inv('qr_poll');
+        if (s.code === 802) $('state').textContent = '已扫码，请在手机上确认…';
+        else if (s.code === 803) {
+          clearInterval(timer);
+          $('state').textContent = '登录成功';
+          $('qrBox').innerHTML = '';
+          setTimeout(checkAccount, 400);
+        } else if (s.code === 800 || s.code === 8821) {
+          clearInterval(timer);
+          $('state').textContent = '二维码已失效，请重新生成';
+        }
+      } catch (e) {
+        clearInterval(timer);
+        $('state').textContent = '轮询失败：' + e;
+      }
+    }, 2000);
+  } catch (e) {
+    $('state').textContent = '生成失败：' + e;
+  }
+}
+
+$('btnLogin').onclick = startLogin;
+$('btnAccount').onclick = checkAccount;
+$('btnRefresh').onclick = loadPlaylists;
+checkAccount();
+</script>
+</body>
+</html>

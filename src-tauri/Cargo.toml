@@ -1,0 +1,29 @@
+[package]
+name = "netease-export"
+version = "0.1.0"
+description = "网易云歌单导出（Rust + Tauri）"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "netease_export_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+ecb = { version = "0.1", features = ["alloc"] }
+base64 = "0.22"
+rand = "0.8"
+num-bigint = "0.4"
+hex = "0.4"
+md5 = "0.7"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
