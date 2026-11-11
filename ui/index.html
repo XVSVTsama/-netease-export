@@ -71,8 +71,8 @@
       <div class="stats" id="createdStats"></div>
       <div class="row-label">歌单</div>
       <div class="actions row3">
-        <button class="btn primary" id="btnAllCsv">CSV</button>
-        <button class="btn soft" id="btnAllMd">MD</button>
+        <button class="btn primary" id="btnAllCsv">导出 CSV</button>
+        <button class="btn soft" id="btnAllMd">导出 MD</button>
         <button class="btn" id="btnRefresh">刷新</button>
       </div>
     </section>
@@ -314,9 +314,8 @@ document.querySelectorAll('.tabs a').forEach(a => a.onclick = e => { e.preventDe
 
 function renderSub() {
   if (!nickname) { $('sub').textContent = '未登录'; return; }
-  const fav = PLAYLISTS.filter(p => !p.mine).length;
   const base = PRIVACY ? '已登录（隐私模式）' : '已登录：' + nickname + '（uid ' + uid + '）';
-  $('sub').textContent = PLAYLISTS.length ? base + ' · 歌单 ' + PLAYLISTS.length + ' 个 · 收藏 ' + fav + ' 个' : base;
+  $('sub').textContent = PLAYLISTS.length ? base + ' · ' + PLAYLISTS.length + ' 个歌单' : base;
 }
 
 /* ---------- 统计 ---------- */
@@ -330,9 +329,8 @@ function renderHomeStats() {
   const empty = mine.filter(p => !p.count).length;
   $('createdMeta').textContent = mine.length ? '歌单 ' + mine.length + ' 个' : '';
   $('createdStats').innerHTML = PLAYLISTS.length
-    ? statHtml('歌单', mine.length, '公开 ' + (mine.length - priv) + ' · 私密 ' + priv) +
-      statHtml('歌曲', songs, '去重前合计') +
-      statHtml('空歌单', empty, '0 首')
+    ? statHtml('歌单', mine.length, '公开 ' + (mine.length - priv) + ' · 私密 ' + priv + (empty ? ' · 空 ' + empty : '')) +
+      statHtml('歌曲', songs, '去重前合计')
     : statHtml('歌单', '—', '刷新后显示');
   $('favMeta').textContent = fav.length ? '收藏歌单 ' + fav.length + ' 个' : '';
   $('favStats').innerHTML = statHtml('收藏歌单', fav.length, '含订阅') +
