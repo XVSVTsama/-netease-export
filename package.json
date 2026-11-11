@@ -10,12 +10,14 @@
   "scripts": {
     "panel": "node web/server.mjs",
     "start": "electron .",
-    "dist:win": "electron-builder --win portable",
+    "dist:win": "electron-builder --win dir",
     "dist:dir": "electron-builder --dir",
     "sync": "node runner.mjs sync",
     "tidy": "node runner.mjs tidy",
     "check": "node runner.mjs check",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "dist:android": "tauri android build --apk",
+    "android:init": "tauri android init --ci"
   },
   "build": {
     "appId": "app.xvsvt.netease.export",

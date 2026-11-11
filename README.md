@@ -1,110 +1,102 @@
 # 网易云导出 · NetEase Exporter
 
-把网易云音乐里**自己创建的歌单**、**收藏歌单**、**收藏专辑**、**听歌排行**、**爱心歌曲**导出成可读的 Markdown 与 CSV，并提供一个跑在本机的图形面板。
+把网易云音乐里**自己创建的歌单**、**收藏歌单**、**收藏专辑**、**听歌排行**、**爱心歌曲**导出成可读文档，并提供**桌面应用**与 **Android App** 两种形态。
 
 只做导出与整理，不提供播放、不代理音频、不绕过任何付费或版权限制。
 
 ---
 
-## 特性
+## 两种形态
 
-- **歌单导出**：自建歌单（含私密）逐首导出为 `歌名 - 制作人/团体 - 专辑 - 发行公司/厂牌`，带时长
-- **专项视图**：已删除 / 已下架 / 仅其他版本可播 / 其他异常，外加特殊字符命名与 26 种书写系统
-- **收藏独立流程**：收藏歌单、收藏专辑各自有同步 / 整理 / 核验，互不干扰
-- **多账号**：每个账号独立目录与 cookie
-- **字符保真**：零宽符、方向隔离符、组合附加符号（Zalgo）原样保留，可切换五种显示方式
-- **内置字体**：14 套 Noto（SIL OFL），藏文、彝文、天城文、泰文等真实字形
-- **全网对比**：对失效曲目实时查询 QQ 音乐、酷狗、酷我、咪咕
-- **事务式同步**：同步只写暂存区，核验通过才提交，面板数据永不出现半成品
-- **原子发布与核验门禁**：整理先写临时目录，30 项校验通过才替换正式目录
+| 形态 | 后端 | 外壳 | 产物 |
+| --- | --- | --- | --- |
+| 桌面版 | Node.js（`web/` + `*.mjs`） | Electron（`main.js`） | Windows 绿色版文件夹 |
+| Android | Rust（`src-tauri/`） | Tauri 2 + WebView（`ui/`） | APK |
 
-## 快速开始
+两套后端**功能对齐**，导出的文件结构、CSV 字段一致：
 
-需要 Node.js 20+。
+```
+exports/
+├── 歌单/          每个歌单一个 csv 或 md
+├── 收藏专辑/      单张专辑曲目
+├── 表格/          收藏歌单、收藏专辑、听歌排行
+└── 专项/          下架、其他版本、特殊字符、非拉丁清单
+```
 
-### 方式一：本地面板
+## 功能
+
+- **登录**：扫码 / 手机号+密码 / 手机号+验证码 / 邮箱+密码 / Cookie 粘贴，登录态持久化
+- **歌单**：自建歌单（含私密）逐首导出，含艺人、专辑、厂牌、时长、失效状态
+- **专辑**：收藏专辑可展开曲目（`/weapi/album/{id}`，注意不是 `v1`）
+- **排行**：听歌排行（全部时间 / 最近一周）
+- **专项**：已下架、仅其他版本可播、特殊字符命名、非拉丁文字，可查看明细与导出清单
+- **字符保真**：零宽符、方向隔离符、组合附加符号（Zalgo）原样保留，五种显示模式切换
+- **隐私模式**：一键隐藏昵称与歌单名，方便截图
+- **打包**：导出目录递归打包成 zip
+
+## 构建
+
+### Windows 桌面版
 
 ```bash
 npm install --no-audit --no-fund
-npm run panel            # 或 node web/server.mjs
-# 打开 http://127.0.0.1:8788
+npm run dist:win        # 产物：dist/win-unpacked/
 ```
 
-首次使用：面板 → 设置 → ＋ 账号 → 手机网易云扫码登录 → 点「同步」。
+绿色版，整个文件夹拷走即用，数据在同目录（`out2/`、`导出/`、`cookie.txt`）。
 
-### 方式二：Android（Termux）
+### Android APK
 
 ```bash
-bash install-termux.sh
+npm install
+npx tauri android init --ci
+npx tauri android build --apk --target aarch64
 ```
 
-会自动安装 Node 与依赖，然后启动面板（手机浏览器打开 `127.0.0.1:8788`）。
+需要 JDK 17 + Android SDK + NDK 26 + Rust 的 `aarch64-linux-android` target。
 
-### 方式三：桌面软件
+CI 已配好：`.github/workflows/build-android.yml` 会自动装 NDK、签名（debug keystore）并上传 APK。
 
-- Windows：`npm install` → `npm run dist:win` → `dist/netease-export-1.0.0.exe`（双击即用，内嵌 Node）
-- 开发调试：`npm start`
+### 本地跑面板（不开壳）
 
-GitHub Actions 也可以直接构建：推送到仓库后运行 `.github/workflows/build-win.yml`。
-
-## 使用流程
-
-```
-同步  →  抓云端数据写进 out2/staging（面板数据不变）
-整理  →  在暂存区生成全部文档
-核验  →  30 项检查，通过则提交为正式数据并发布到 导出/
+```bash
+npm run panel           # http://127.0.0.1:8788
 ```
 
-三个动作独立，可以只同步不整理，也可以随时只跑核验。
-
-## 导出结构
+## 目录
 
 ```
-导出/
-├── 00_自建歌单索引.md      233 个歌单（含置顶、私密标记）
-├── 01_数据处理说明.md      编码、遮盖、下架、字段完整性口径
-├── 02_歌单可见性清单.md
-├── 03_整理报告.md          本次生成统计 + CSV 校验和
-├── 歌单/公开|私密/         每歌单一份 md
-├── 专项/                   30 特殊字符 / 40 删除与下架 / 50 非拉丁文字
-├── 收藏/                   00 收藏歌单 / 01 收藏专辑 / 02 我创建的专辑
-├── 排行与收藏/             10 听歌排行 ×2 / 12 爱心歌曲 / 20 收藏专辑
-└── 表格/                   all_songs.csv（24 列）、songs_full.json、albums.csv
+main.js                Electron 主进程（PC）
+web/                   面板服务端与前端（PC）
+src-tauri/             Rust 后端（Android）
+ui/                    Tauri 前端（Android）
+*.mjs                  Node 侧抓取、整理、核验脚本（PC）
+.github/workflows/     build-win.yml、build-android.yml
 ```
 
-## 目录结构
+## 关键接口记录
 
-```
-web/                面板（server.mjs + public/）
-export.mjs          网易云请求封装（weapi / eapi 加密）
-sync.mjs            同步到暂存区
-enrich.mjs          补齐时长、权限、状态
-merge.mjs           生成全部文档
-build.sh            整理：原子发布 + 打包 + 核验门禁
-check.mjs           30 项一致性核验
-stage.mjs           暂存区 init / commit / discard
-runner.mjs          任务编排（面板按钮调它）
-fav.mjs / cpl.mjs / cal.mjs   收藏专辑 / 收藏歌单 / 创建专辑
-main.js             Electron 桌面入口
-```
+| 用途 | 接口 | 备注 |
+| --- | --- | --- |
+| 扫码 unikey | `eapi /login/qrcode/unikey` | weapi 生成的码会被新版 App 拒绝 |
+| 歌单详情 | `eapi /v6/playlist/detail` | 拿 trackIds 全量 |
+| 歌曲详情 | `weapi /v3/song/detail` | 批量 400–1000 首 |
+| 专辑曲目 | `weapi /album/{id}` | **不要用 `/v1/album/`，songs 恒空** |
+| 收藏专辑 | `weapi /album/sublist` | 25/页 |
+| 听歌排行 | `weapi /v1/play/record` | type=0 全部、1 一周 |
 
 ## 已知限制
 
-- **必须本地进程**：网易云接口没有 `Access-Control-Allow-Origin`，也不支持 JSONP，浏览器无法直接调用
-- **专辑曲目**：专辑详情接口返回 `songs: []`，收藏专辑只有名称/艺人/厂牌/发行时间/曲目数
-- **厂牌空值**：约 23% 的专辑网易自己未填写，导出标「未标注厂牌」，不做猜测补全
-- **全网对比**：Spotify 与 YouTube Music 无匿名搜索接口，只提供跳转链接
-- **彻底下架**：歌曲被彻底下架后接口不再返回，只能依靠历史快照记录「已删除」
+- 网易云接口无 CORS，浏览器无法直接调用，必须本地进程
+- 厂牌约 23% 的专辑网易自己未填写，导出标「未标注厂牌」
+- Spotify、YouTube Music 无匿名搜索接口（Node 版的全网对比只给跳转链接）
+- 彻底下架的歌接口不再返回，无法取回
 
 ## 数据与隐私
 
-- cookie 只写入本地 `cookie.txt`，仅用于访问你自己的账号
-- 面板只监听 `127.0.0.1`
-- 不含任何远程上报；`cookie.txt`、`accounts.json`、`out2/` 已在 `.gitignore` 中排除
-
-## 免责声明
-
-仅用于个人数据备份与阅读。使用时请遵守网易云音乐服务条款与当地法律，导出内容的版权归权利人所有。
+- cookie 只写本地，仅用于访问你自己的账号
+- 仓库不含任何账号数据，`.gitignore` 已排除 `cookie.txt`、`accounts.json`、`out2/`
+- 音乐版权归权利人所有，本工具仅用于个人数据备份
 
 ## 许可证
 
