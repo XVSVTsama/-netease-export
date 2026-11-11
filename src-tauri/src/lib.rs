@@ -12,6 +12,8 @@ use tauri::{Manager, State};
 pub struct AppState {
     client: Arc<Client>,
     last_qr: Mutex<String>,
+    special: Mutex<Vec<Value>>,
+    special_ids: Mutex<std::collections::HashSet<i64>>,
 }
 
 fn cookie_path(app: &tauri::AppHandle) -> Option<PathBuf> {
@@ -203,6 +205,16 @@ async fn export_playlist(app: tauri::AppHandle, state: State<'_, AppState>, id: 
     if saved.is_empty() {
         return Err("写入文件失败".into());
     }
+    // 累积专项明细（按歌曲 ID 去重）
+    if let Some(items) = d["items"].as_array() {
+        let mut set = state.special_ids.lock().unwrap();
+        let mut acc = state.special.lock().unwrap();
+        for it in items {
+            if let Some(id) = it["id"].as_i64() {
+                if set.insert(id) { acc.push(it.clone()); }
+            }
+        }
+    }
     Ok(serde_json::json!({ "ok": true, "paths": saved, "count": d["count"].as_i64().unwrap_or(0), "stats": d["stats"].clone() }))
 }
 
@@ -238,6 +250,91 @@ async fn save_text(app: tauri::AppHandle, name: String, content: String) -> Resu
     Ok(serde_json::json!({ "ok": true, "paths": saved }))
 }
 
+#[tauri::command]
+async fn special_items(state: State<'_, AppState>) -> Result<Value, String> {
+    let acc = state.special.lock().unwrap();
+    Ok(serde_json::json!({ "total": acc.len(), "items": acc.clone() }))
+}
+
+#[tauri::command]
+async fn export_special(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
+    let acc = state.special.lock().unwrap();
+    if acc.is_empty() { return Err("还没有专项数据，先导出几个歌单".into()); }
+    let mut out = String::from("\u{feff}序号,歌名,制作人/团体,专辑,发行公司/厂牌,分类,歌曲ID\n");
+    let e = |v: &Value| format!("\"{}\"", v.as_str().unwrap_or("").replace('"', "\"\""));
+    for (i, it) in acc.iter().enumerate() {
+        let kinds = it["kinds"].as_array()
+            .map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" / "))
+            .unwrap_or_default();
+        out.push_str(&format!("{},{},{},{},{},{},{}\n", i + 1,
+            e(&it["name"]), e(&it["ar"]), e(&it["al"]), e(&it["company"]), kinds,
+            it["id"].as_i64().unwrap_or(0)));
+    }
+    drop(acc);
+    let (paths, _) = write_both(&app, "专项清单.csv", &out);
+    if paths.is_empty() { return Err("写入失败".into()); }
+    Ok(serde_json::json!({ "ok": true, "paths": paths }))
+}
+
+fn write_both(app: &tauri::AppHandle, name: &str, content: &str) -> (Vec<String>, ()) {
+    let file = sanitize(name);
+    let mut saved: Vec<String> = Vec::new();
+    if let Ok(dir) = app.path().app_data_dir() {
+        let out = dir.join("exports");
+        let _ = fs::create_dir_all(&out);
+        let p = out.join(&file);
+        if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); }
+    }
+    for base in ["/storage/emulated/0/Download/网易云导出", "/sdcard/Download/网易云导出"] {
+        let dir = std::path::Path::new(base);
+        if fs::create_dir_all(dir).is_ok() {
+            let p = dir.join(&file);
+            if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); break; }
+        }
+    }
+    (saved, ())
+}
+
+/// 把已导出的文件打包成 zip
+#[tauri::command]
+async fn zip_exports(app: tauri::AppHandle) -> Result<Value, String> {
+    use std::io::Write;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("exports");
+    if !dir.exists() { return Err("还没有导出任何文件".into()); }
+    let mut entries: Vec<_> = fs::read_dir(&dir).map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().map(|x| x != "zip").unwrap_or(true))
+        .collect();
+    entries.sort();
+    if entries.is_empty() { return Err("导出目录里没有文件".into()); }
+    let zip_path = dir.join("网易云导出.zip");
+    {
+        let file = fs::File::create(&zip_path).map_err(|e| e.to_string())?;
+        let mut zw = zip::ZipWriter::new(file);
+        let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        for p in &entries {
+            let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+            zw.start_file(name, opts).map_err(|e| e.to_string())?;
+            let data = fs::read(p).map_err(|e| e.to_string())?;
+            zw.write_all(&data).map_err(|e| e.to_string())?;
+        }
+        zw.finish().map_err(|e| e.to_string())?;
+    }
+    let size = fs::metadata(&zip_path).map(|m| m.len()).unwrap_or(0);
+    // 复制到公共下载目录
+    let mut public = String::new();
+    for base in ["/storage/emulated/0/Download/网易云导出", "/sdcard/Download/网易云导出"] {
+        let d = std::path::Path::new(base);
+        if fs::create_dir_all(d).is_ok() {
+            let p = d.join("网易云导出.zip");
+            if fs::copy(&zip_path, &p).is_ok() { public = p.to_string_lossy().to_string(); break; }
+        }
+    }
+    Ok(serde_json::json!({ "ok": true, "files": entries.len(), "size": size,
+        "path": zip_path.to_string_lossy().to_string(), "public": public }))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let client = Arc::new(Client::new());
@@ -254,11 +351,12 @@ pub fn run() {
                 Ok(())
             }
         })
-        .manage(AppState { client, last_qr: Mutex::new(String::new()) })
+        .manage(AppState { client, last_qr: Mutex::new(String::new()), special: Mutex::new(Vec::new()), special_ids: Mutex::new(std::collections::HashSet::new()) })
         .invoke_handler(tauri::generate_handler![
             qr_new, qr_poll, account, playlists, playlist_detail,
             login_cookie, login_phone_password, sms_sent, login_phone_captcha,
-            login_email, logout, export_playlist, collected_albums, play_record, save_text
+            login_email, logout, export_playlist, collected_albums, play_record, save_text,
+            special_items, export_special, zip_exports
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

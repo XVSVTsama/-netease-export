@@ -44,6 +44,8 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .empty{color:var(--muted);font-size:13.5px;text-align:center;padding:18px 0}
 .hint{color:var(--muted);font-size:12px;margin-top:8px;text-align:center;line-height:1.6}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.progress{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:8px}
+.progress > i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
 .stat{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px}
 .stat .k{font-size:12px;color:var(--muted)}
 .stat .v{font-size:20px;font-weight:700;margin-top:2px}
@@ -108,7 +110,10 @@ input:focus,textarea:focus{border-color:var(--accent)}
       <button id="btnAllCsv">全部导出 CSV</button>
       <button class="ghost" id="btnAllMd">全部导出 MD</button>
     </div>
+    <div class="progress"><i id="batchBar"></i></div>
     <div class="state" id="batchState"></div>
+    <div class="row" style="margin-top:8px"><button class="ghost" id="btnZip">打包成 zip</button></div>
+    <div class="state" id="zipState"></div>
   </div>
 
   <!-- 收藏专辑 -->
@@ -141,6 +146,11 @@ input:focus,textarea:focus{border-color:var(--accent)}
       <button class="ghost small" id="btnResetStats">重置</button>
     </div>
     <div class="stats" id="specialStats"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="ghost" id="btnSpecialList">查看明细</button>
+      <button class="ghost" id="btnSpecialCsv">导出清单 CSV</button>
+    </div>
+    <div class="list" id="specialList" style="margin-top:8px"></div>
     <div class="hint">统计来自本次运行中导出过的歌单；执行「全部导出 CSV」后覆盖最完整</div>
     <div class="state" id="specialState"></div>
   </div>
@@ -296,14 +306,17 @@ async function exportAll(format){
   if (!PLAYLISTS.length) return;
   const btnCsv = $('btnAllCsv'), btnMd = $('btnAllMd');
   btnCsv.disabled = true; btnMd.disabled = true;
+  $('batchBar').style.width = '0%';
   let ok = 0, fail = 0;
   const t0 = Date.now();
   for (let i = 0; i < PLAYLISTS.length; i++) {
     const p = PLAYLISTS[i];
     const elapsed = Math.round((Date.now()-t0)/1000);
+    $('batchBar').style.width = Math.round((i / PLAYLISTS.length) * 100) + '%';
     setState('batchState', `导出中 ${i+1}/${PLAYLISTS.length}：${p.name}（耗时 ${elapsed}s，成功 ${ok} 失败 ${fail}）`);
     try { const r = await exportOne(p.id, format); accStats(r.stats); ok++; } catch (e) { fail++; }
   }
+  $('batchBar').style.width = '100%';
   setState('batchState', `完成：成功 ${ok}，失败 ${fail}，共 ${Math.round((Date.now()-t0)/1000)} 秒`, fail ? '' : 'ok');
   btnCsv.disabled = false; btnMd.disabled = false;
 }
@@ -390,6 +403,28 @@ $('btnAllCsv').onclick = () => exportAll('csv');
 $('btnAllMd').onclick = () => exportAll('md');
 $('btnAlbumCsv').onclick = exportAlbums;
 $('btnRankCsv').onclick = exportRank;
+$('btnZip').onclick = async () => {
+  setState('zipState','打包中…');
+  try { const r = await inv('zip_exports');
+    setState('zipState', `已打包 ${r.files} 个文件，${(r.size/1048576).toFixed(1)} MB\n${r.public || r.path}`, 'ok');
+  } catch (e) { setState('zipState','打包失败：'+e,'err'); }
+};
+$('btnSpecialList').onclick = async () => {
+  $('specialList').innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const r = await inv('special_items');
+    const items = r.items || [];
+    $('specialList').innerHTML = items.length ? items.map((it,i) => {
+      const kinds = (it.kinds||[]).map(k => ({otherVersion:'其他版本',special:'特殊字符',nonLatin:'非拉丁'}[k]||k)).join(' / ');
+      return `<div class="item"><span class="n">${i+1}. ${esc(it.name)}<br><span style="color:var(--muted);font-size:12px">${esc(it.ar)} · ${esc(it.al)} · ${esc(it.company||'未标注厂牌')}</span></span><span class="c">${esc(kinds)}</span></div>`;
+    }).join('') : '<div class="empty">暂无明细，先导出歌单</div>';
+    setState('specialState', `共 ${r.total} 条`, 'ok');
+  } catch (e) { setState('specialState','加载失败：'+e,'err'); }
+};
+$('btnSpecialCsv').onclick = async () => {
+  try { const r = await inv('export_special'); setState('specialState','已导出：'+r.paths.join(' / '),'ok'); }
+  catch (e) { setState('specialState','导出失败：'+e,'err'); }
+};
 $('btnResetStats').onclick = () => { ACC = { down: 0, otherVersion: 0, special: 0, nonLatin: 0, total: 0, playlists: 0 }; renderSpecial(); setState('specialState','已重置'); };
 $('btnBack').onclick = () => { $('detailCard').hidden = true; $('mainCard').hidden = false; };
 $('btnExportCsv').onclick = async () => {

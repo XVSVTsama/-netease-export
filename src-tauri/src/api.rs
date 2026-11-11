@@ -208,8 +208,9 @@ pub async fn playlist_detail(c: &Client, id: i64) -> Result<Value, String> {
         }
     }
 
-    let stats = classify(&rows);
+    let (stats, items) = classify_items(&rows);
     Ok(json!({
+        "items": items,
         "id": id,
         "name": pl["name"].as_str().unwrap_or(""),
         "count": rows.len(),
@@ -220,7 +221,7 @@ pub async fn playlist_detail(c: &Client, id: i64) -> Result<Value, String> {
 
 /* ---------------- 专项分类 ---------------- */
 
-fn classify(rows: &[Value]) -> Value {
+pub fn classify_items(rows: &[Value]) -> (Value, Vec<Value>) {
     use regex::Regex;
     let special_re = Regex::new(r"[\p{Mn}\p{Mc}\p{Cf}\p{So}\p{Co}]").unwrap();
     let nonlatin_re = Regex::new(r"[\p{Cyrillic}\p{Hiragana}\p{Katakana}\p{Hangul}\p{Arabic}\p{Hebrew}\p{Greek}\p{Devanagari}\p{Tibetan}\p{Thai}\p{Yi}\p{Mongolian}\p{Georgian}\p{Armenian}\p{Ethiopic}\p{Sinhala}\p{Khmer}\p{Lao}\p{Myanmar}]").unwrap();
@@ -232,8 +233,26 @@ fn classify(rows: &[Value]) -> Value {
         if special_re.is_match(name) { special += 1; }
         if nonlatin_re.is_match(name) { nonlatin += 1; }
     }
-    json!({ "down": down, "otherVersion": other_ver, "special": special, "nonLatin": nonlatin,
-            "total": rows.len() })
+    let mut items = Vec::new();
+    for r in rows {
+        let name = r["name"].as_str().unwrap_or("");
+        let kinds: Vec<&str> = [
+            (r["ncr"].as_bool().unwrap_or(false), "otherVersion"),
+            (special_re.is_match(name), "special"),
+            (nonlatin_re.is_match(name), "nonLatin"),
+        ].iter().filter(|(b, _)| *b).map(|(_, k)| *k).collect();
+        if kinds.is_empty() { continue; }
+        items.push(json!({
+            "id": r["id"].as_i64().unwrap_or(0),
+            "name": name,
+            "ar": r["ar"].as_str().unwrap_or(""),
+            "al": r["al"].as_str().unwrap_or(""),
+            "company": r["company"].as_str().unwrap_or(""),
+            "kinds": kinds,
+        }));
+    }
+    (json!({ "down": down, "otherVersion": other_ver, "special": special, "nonLatin": nonlatin,
+             "total": rows.len() }), items)
 }
 
 /* ---------------- 收藏专辑 ---------------- */
