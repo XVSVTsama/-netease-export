@@ -65,3 +65,9 @@ header.top{padding-top:env(safe-area-inset-top,0px)}
 
 /* 日志时间列 */
 .job-log .lg .ts { color: var(--muted); margin-right: 8px; font-variant-numeric: tabular-nums; }
+
+/* 详情页：单曲封面 + 艺术家/专辑/厂牌各占一行 */
+.track { align-items: flex-start; }
+.track .thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: var(--bg-elev); flex: 0 0 auto; }
+.track .idx { padding-top: 2px; }
+.track .body .meta { margin-top: 2px; }

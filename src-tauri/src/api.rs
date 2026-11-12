@@ -129,6 +129,13 @@ pub async fn playlists(c: &Client, uid: i64) -> Result<Value, String> {
     Ok(json!({ "total": out.len(), "items": out }))
 }
 
+fn song_cover(s: &Value) -> String {
+    s["al"]["picUrl"].as_str()
+        .or_else(|| s["album"]["picUrl"].as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
 fn song_of_album(s: &Value) -> (String, String, String, i64, i64, i64) {
     let name = s["name"].as_str().unwrap_or("").to_string();
     let ar = s["ar"].as_array().or_else(|| s["artists"].as_array())
@@ -260,6 +267,7 @@ pub async fn playlist_detail(c: &Client, id: i64, with_company: bool) -> Result<
                 "mv": s["mv"].as_i64().unwrap_or(0),
                 "fee": s["fee"].as_i64().unwrap_or(0),
                 "st": st, "pl": pl, "missing": false,
+                "cover": song_cover(s),
             }));
         } else {
             // 下架/无版权的歌接口不再返回详情，保留一行占位，导出时标成已下架
@@ -397,6 +405,7 @@ pub async fn album_detail(c: &Client, id: i64) -> Result<Value, String> {
             "alia": s["alias"].as_array().map(|x| x.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(" / ")).unwrap_or_default(),
             "mv": s["mvid"].as_i64().unwrap_or(0),
             "fee": s["fee"].as_i64().unwrap_or(0),
+            "cover": song_cover(s),
         }));
     }
     Ok(json!({

@@ -649,9 +649,13 @@ function renderDetail() {
     const title = r.name || (r.missing ? '（已下架·名称不可获取）' : '（未知）');
     const cmp = r.company || (r.cstate === 'none' ? '未标注厂牌'
       : r.cstate === 'fail' ? '厂牌查询失败' : '厂牌未查询');
-    const meta = [r.ar, r.al, cmp].filter(Boolean).map(esc).join(' · ');
-    return '<div class="track"><span class="idx">' + (i + 1) + '</span><div class="body">' +
-      '<div class="title">' + esc(disp(title)) + flag + '</div><div class="meta">' + meta + '</div></div>' +
+    const lines = [r.ar, r.al, cmp].filter(Boolean)
+      .map(v => '<div class="meta">' + esc(v) + '</div>').join('');
+    const thumb = r.cover
+      ? '<img class="thumb" src="' + imgUrl(r.cover, 80) + '" alt="">'
+      : '<span class="thumb"></span>';
+    return '<div class="track">' + thumb + '<span class="idx">' + (i + 1) + '</span><div class="body">' +
+      '<div class="title">' + esc(disp(title)) + flag + '</div>' + lines + '</div>' +
       '<span class="tail">' + fmtDur(r.dur) + '</span></div>';
   }).join('');
   if (detailRows.length > shown.length) {
