@@ -71,8 +71,8 @@
       <div class="stats" id="createdStats"></div>
       <div class="row-label">歌单</div>
       <div class="actions">
-        <button class="btn primary" id="btnRunPl">整理并导出</button>
-        <button class="btn ghost" id="btnFillPl">补厂牌</button>
+        <button class="btn act" id="btnRunPl">整理并导出</button>
+        <button class="btn act" id="btnFillPl">补厂牌</button>
       </div>
     </section>
 
@@ -81,13 +81,13 @@
       <div class="stats" id="favStats"></div>
       <div class="row-label">歌单</div>
       <div class="actions">
-        <button class="btn soft" id="btnRunFav">整理并导出</button>
-        <button class="btn ghost" id="btnFillFav">补厂牌</button>
+        <button class="btn act" id="btnRunFav">整理并导出</button>
+        <button class="btn act" id="btnFillFav">补厂牌</button>
       </div>
       <div class="row-label">收藏专辑</div>
       <div class="actions">
-        <button class="btn soft" id="btnRunAl">整理并导出</button>
-        <button class="btn ghost" id="btnFillAl">补厂牌</button>
+        <button class="btn act" id="btnRunAl">整理并导出</button>
+        <button class="btn act" id="btnFillAl">补厂牌</button>
       </div>
     </section>
 
@@ -869,6 +869,13 @@ function scrollToTask() {
 $('btnRunPl').onclick = () => runScope('pl', false);
 $('btnRunFav').onclick = () => runScope('plfav', false);
 $('btnRunAl').onclick = () => runScope('al', false);
+// 按下时立刻变红，短按也能看见
+document.querySelectorAll('.btn.act').forEach(b => {
+  b.addEventListener('touchstart', () => b.classList.add('pressing'), { passive: true });
+  b.addEventListener('touchend', () => setTimeout(() => b.classList.remove('pressing'), 200), { passive: true });
+  b.addEventListener('touchcancel', () => b.classList.remove('pressing'), { passive: true });
+});
+
 $('btnFillPl').onclick = () => runScope('pl', true);
 $('btnFillFav').onclick = () => runScope('plfav', true);
 $('btnFillAl').onclick = () => runScope('al', true);
