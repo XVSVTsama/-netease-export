@@ -183,8 +183,11 @@
     <section class="section">
       <h2>导出位置</h2>
       <input type="search" id="exportDir" placeholder="/storage/emulated/0/Download/网易云导出" autocomplete="off">
-      <div class="actions" style="margin-top:10px">
-        <button class="btn soft" id="btnDirCheck">检测</button>
+      <div class="actions" style="margin-top:10px;grid-template-columns:1fr">
+        <button class="btn soft" id="btnDirPick">从系统选文件夹…</button>
+      </div>
+      <div class="actions" style="margin-top:8px">
+        <button class="btn" id="btnDirCheck">检测</button>
         <button class="btn primary" id="btnDirSave">保存</button>
       </div>
       <div class="hint" id="dirState">需要「所有文件访问权限」才能写入公共目录</div>
@@ -938,6 +941,25 @@ async function loadExportDir() {
       ? '当前可写入'
       : '当前不可写：设置 → 应用 → 网易云导出 → 权限 → 所有文件访问权限');
   } catch (e) { setHint('dirState', '读取失败：' + e); }
+}
+let pickingDir = false;
+$('btnDirPick').onclick = async () => {
+  try {
+    await inv('pick_export_dir');
+    pickingDir = true;
+    setHint('dirState', '在系统选择器里选一个文件夹，选完回到这里');
+  } catch (e) { setHint('dirState', '打不开选择器：' + e); }
+};
+if (document.addEventListener) {
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || !pickingDir) return;
+    pickingDir = false;
+    try {
+      const r = await inv('take_picked_dir');
+      if (r.dir) $('exportDir').value = r.dir;
+      setHint('dirState', r.ok ? ('已保存：' + r.dir) : ('选到了但不可写：' + (r.message || '')));
+    } catch (e) { setHint('dirState', '读取选择失败：' + e); }
+  });
 }
 $('btnDirCheck').onclick = async () => {
   try {

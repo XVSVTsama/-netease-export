@@ -579,6 +579,174 @@ fn set_export_dir(app: tauri::AppHandle, dir: String) -> Result<Value, String> {
     }
 }
 
+/* ---------------- 系统目录选择（SAF） ---------------- */
+
+fn hexval(c: u8) -> Option<u8> {
+    match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        b'A'..=b'F' => Some(c - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let (Some(h), Some(l)) = (hexval(b[i + 1]), hexval(b[i + 2])) {
+                out.push(h * 16 + l);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+/// content://com.android.externalstorage.documents/tree/primary%3ADownload%2Fx
+/// → /storage/emulated/0/Download/x
+fn tree_uri_to_path(uri: &str) -> Option<String> {
+    let decoded = percent_decode(uri);
+    let rest = decoded.split("/tree/").nth(1)?;
+    let (volume, path) = rest.split_once(':')?;
+    let base = match volume {
+        "primary" => "/storage/emulated/0",
+        _ => return None,
+    };
+    let p = path.trim_matches('/');
+    if p.is_empty() { Some(base.to_string()) } else { Some(format!("{}/{}", base, p)) }
+}
+
+#[cfg(target_os = "android")]
+mod android_fs {
+    use jni::objects::{JObject, JString, JValue};
+    use jni::JavaVM;
+
+    fn with_env<T>(
+        f: impl FnOnce(&mut jni::JNIEnv, &JObject) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let ctx = ndk_context::android_context();
+        let vm = unsafe { JavaVM::from_raw(ctx.vm() as *mut jni::sys::JavaVM) }
+            .map_err(|e| format!("取 JavaVM 失败: {}", e))?;
+        let mut env = vm.attach_current_thread().map_err(|e| format!("attach 失败: {}", e))?;
+        let activity = unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
+        f(&mut env, &activity)
+    }
+
+    /// 拉起系统的「选择文件夹」界面
+    pub fn pick_dir() -> Result<(), String> {
+        with_env(|env, act| {
+            let action = env
+                .new_string("android.intent.action.OPEN_DOCUMENT_TREE")
+                .map_err(|e| e.to_string())?;
+            let action_obj = JObject::from(action);
+            let intent = env
+                .new_object(
+                    "android/content/Intent",
+                    "(Ljava/lang/String;)V",
+                    &[JValue::Object(&action_obj)],
+                )
+                .map_err(|e| e.to_string())?;
+            // READ | WRITE | PERSISTABLE
+            env.call_method(
+                &intent,
+                "addFlags",
+                "(I)Landroid/content/Intent;",
+                &[JValue::Int(0x43)],
+            )
+            .map_err(|e| e.to_string())?;
+            env.call_method(
+                act,
+                "startActivityForResult",
+                "(Landroid/content/Intent;I)V",
+                &[JValue::Object(&intent), JValue::Int(4321)],
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(())
+        })
+    }
+
+    /// 读取 MainActivity 在 onActivityResult 里存下的 tree uri
+    pub fn read_picked() -> Result<Option<String>, String> {
+        with_env(|env, act| {
+            let name = env.new_string("eta").map_err(|e| e.to_string())?;
+            let name_obj = JObject::from(name);
+            let prefs = env
+                .call_method(
+                    act,
+                    "getSharedPreferences",
+                    "(Ljava/lang/String;I)Landroid/content/SharedPreferences;",
+                    &[JValue::Object(&name_obj), JValue::Int(0)],
+                )
+                .map_err(|e| e.to_string())?
+                .l()
+                .map_err(|e| e.to_string())?;
+            let key = env.new_string("picked_dir").map_err(|e| e.to_string())?;
+            let key_obj = JObject::from(key);
+            let null = JObject::null();
+            let value = env
+                .call_method(
+                    &prefs,
+                    "getString",
+                    "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+                    &[JValue::Object(&key_obj), JValue::Object(&null)],
+                )
+                .map_err(|e| e.to_string())?
+                .l()
+                .map_err(|e| e.to_string())?;
+            if value.is_null() {
+                return Ok(None);
+            }
+            let js = JString::from(value);
+            let text: String = env
+                .get_string(&js)
+                .map_err(|e| e.to_string())?
+                .into();
+            Ok(Some(text))
+        })
+    }
+}
+
+#[tauri::command]
+fn pick_export_dir() -> Result<Value, String> {
+    #[cfg(target_os = "android")]
+    {
+        android_fs::pick_dir()?;
+        Ok(serde_json::json!({ "ok": true }))
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("只有 Android 支持系统目录选择".into())
+    }
+}
+
+#[tauri::command]
+fn take_picked_dir(app: tauri::AppHandle) -> Result<Value, String> {
+    #[cfg(target_os = "android")]
+    {
+        let uri = android_fs::read_picked()?.ok_or_else(|| "还没选目录".to_string())?;
+        let path = tree_uri_to_path(&uri)
+            .ok_or_else(|| "只支持内部存储（primary）上的目录".to_string())?;
+        match dir_writable(Path::new(&path)) {
+            Ok(()) => {
+                save_export_dir(&app, &path)?;
+                Ok(serde_json::json!({ "ok": true, "dir": path, "uri": uri }))
+            }
+            Err(e) => Ok(serde_json::json!({ "ok": false, "dir": path, "message": e })),
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Err("只有 Android 支持系统目录选择".into())
+    }
+}
+
 #[tauri::command]
 fn app_version(app: tauri::AppHandle) -> String {
     app.package_info().version.to_string()
@@ -1231,7 +1399,8 @@ pub fn run() {
             special_items, export_special, zip_exports, album_detail, export_album,
             stage_one, stage_stats, stage_ids, fill_companies, tidy, check_exports,
             job_start, job_status, job_stop, copy_log,
-            get_export_dir, set_export_dir, check_export_dir, app_version
+            get_export_dir, set_export_dir, check_export_dir, app_version,
+            pick_export_dir, take_picked_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

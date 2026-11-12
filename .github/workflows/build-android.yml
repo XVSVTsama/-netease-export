@@ -51,6 +51,43 @@ jobs:
           fi
           grep -n "MANAGE_EXTERNAL_STORAGE" "$MAN"
 
+      - name: 目录选择回调（SAF）
+        run: |
+          MA=$(find src-tauri/gen/android/app/src/main/java -name MainActivity.kt | head -1)
+          echo "MainActivity: $MA"
+          test -n "$MA"
+          python3 - "$MA" <<'PY'
+          import sys
+          p = sys.argv[1]
+          s = open(p).read()
+          if 'picked_dir' in s:
+              print('already patched')
+              sys.exit(0)
+          method = '''
+            override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+              super.onActivityResult(requestCode, resultCode, data)
+              if (requestCode == 4321 && resultCode == android.app.Activity.RESULT_OK) {
+                val uri = data?.data
+                if (uri != null) {
+                  try {
+                    contentResolver.takePersistableUriPermission(
+                      uri,
+                      android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                  } catch (_: Exception) {
+                  }
+                  getSharedPreferences("eta", MODE_PRIVATE).edit().putString("picked_dir", uri.toString()).apply()
+                }
+              }
+            }
+          '''
+          i = s.rstrip().rfind('}')
+          s = s[:i] + method + "\n" + s[i:]
+          open(p, 'w').write(s)
+          print('patched')
+          PY
+          grep -n "picked_dir" "$MA"
+
       - name: 写入版本号（覆盖安装需要递增 versionCode）
         run: |
           VERSION=$(node -p "require('./package.json').version")
