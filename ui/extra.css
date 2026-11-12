@@ -55,3 +55,10 @@ header.top{padding-top:env(safe-area-inset-top,0px)}
   0%, 100% { box-shadow: 0 0 0 0 rgba(255, 180, 0, .55); }
   50% { box-shadow: 0 0 0 7px rgba(255, 180, 0, 0); }
 }
+
+/* ---------- 列表与详情封面 ---------- */
+.hero h2 { font-size: 19px; margin: 0 0 4px; letter-spacing: -.01em; }
+.hero .h-meta { font-size: 13px; color: var(--muted); line-height: 1.55; }
+.hero { align-items: center; }
+.row .thumb { object-fit: cover; }
+.row .thumb:empty { border: 1px dashed var(--line); }

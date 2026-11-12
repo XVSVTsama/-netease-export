@@ -526,6 +526,10 @@ async fn tidy(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
     let mut items = 0usize;
     let mut songs = 0i64;
     let mut failed = 0usize;
+    let mut index_rows: Vec<String> = Vec::new();
+    let mut all_rows: Vec<Value> = Vec::new();
+    let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
+
     for (_, d) in read_stage(&dir) {
         let name = sanitize(d["name"].as_str().unwrap_or("未命名"));
         let (csv_paths, _) = write_both(&app, &format!("{}/{}.csv", sub, name), &to_csv(&d));
@@ -533,10 +537,41 @@ async fn tidy(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
         if csv_paths.is_empty() || md_paths.is_empty() { failed += 1; continue; }
         files += 2;
         items += 1;
-        songs += d["count"].as_i64().unwrap_or(0);
+        let count = d["count"].as_i64().unwrap_or(0);
+        songs += count;
+        index_rows.push(format!("| {} | {} | `{}/{}.md` |", name, count, sub, name));
+        if kind == "pl" {
+            if let Some(rows) = d["rows"].as_array() {
+                for r in rows {
+                    let id = r["id"].as_i64().unwrap_or(0);
+                    if id > 0 && seen.insert(id) { all_rows.push(r.clone()); }
+                }
+            }
+        }
     }
+
+    // 索引文档：与 PC 面板的 00 索引对齐
+    if !index_rows.is_empty() {
+        let idx = format!(
+            "# {}\n\n- 项数：{}\n- 曲目合计：{} 首\n- 生成时间：{}\n\n| 名称 | 曲目 | 文件 |\n| --- | --- | --- |\n{}\n",
+            sub, items, songs, chrono_like_now(), index_rows.join("\n")
+        );
+        let (p, _) = write_both(&app, &format!("{}/00_索引.md", sub), &idx);
+        if !p.is_empty() { files += 1; }
+    }
+
+    // 汇总表：自建歌单的全部曲目（按歌曲 ID 去重），与 PC 的 表格/all_songs.csv 对齐
+    let mut unique = 0i64;
+    if kind == "pl" && !all_rows.is_empty() {
+        unique = all_rows.len() as i64;
+        let d = serde_json::json!({ "name": "全部曲目", "id": 0, "count": unique, "rows": all_rows });
+        let (p, _) = write_both(&app, "表格/all_songs.csv", &to_csv(&d));
+        if !p.is_empty() { files += 1; }
+    }
+
     Ok(serde_json::json!({
-        "ok": true, "items": items, "files": files, "songs": songs, "failed": failed, "sub": sub
+        "ok": true, "items": items, "files": files, "songs": songs, "unique": unique,
+        "failed": failed, "sub": sub
     }))
 }
 

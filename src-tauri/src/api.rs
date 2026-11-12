@@ -120,6 +120,7 @@ pub async fn playlists(c: &Client, uid: i64) -> Result<Value, String> {
                 "privacy": p["privacy"].as_i64().unwrap_or(0),
                 "creator": p["creator"]["nickname"].as_str().unwrap_or(""),
                 "mine": p["userId"].as_i64() == Some(uid),
+                "cover": p["coverImgUrl"].as_str().unwrap_or(""),
             }));
         }
         if arr.len() < 100 { break; }
@@ -248,6 +249,7 @@ pub async fn playlist_detail(c: &Client, id: i64, with_company: bool) -> Result<
         "items": items,
         "id": id,
         "name": pl["name"].as_str().unwrap_or(""),
+        "cover": pl["coverImgUrl"].as_str().unwrap_or(""),
         "count": rows.len(),
         "stats": stats,
         "rows": rows,
@@ -309,6 +311,7 @@ pub async fn collected_albums(c: &Client) -> Result<Value, String> {
                 "size": a["size"].as_i64().unwrap_or(0),
                 "company": a["company"].as_str().unwrap_or(""),
                 "publishTime": a["publishTime"].as_i64().unwrap_or(0),
+                "pic": a["picUrl"].as_str().unwrap_or(""),
             }));
         }
         if r["hasMore"].as_bool() != Some(true) || arr.len() < 25 { break; }
@@ -344,6 +347,7 @@ pub async fn album_detail(c: &Client, id: i64) -> Result<Value, String> {
         "artists": a["artists"].as_array().map(|x| x.iter().filter_map(|v| v["name"].as_str()).collect::<Vec<_>>().join(" / ")).unwrap_or_default(),
         "company": a["company"].as_str().unwrap_or(""),
         "publishTime": a["publishTime"].as_i64().unwrap_or(0),
+        "cover": a["picUrl"].as_str().unwrap_or(""),
         "count": rows.len(),
         "rows": rows,
     }))

@@ -209,7 +209,7 @@
       <div class="hint">
         导出文件写入 <code>/sdcard/Download/网易云导出</code>，同时在应用私有目录留一份。<br>
         本应用只导出公开的歌单信息与曲目元数据，不播放、不下载音频，也不绕过任何付费或版权限制。<br>
-        版本 <span id="ver">1.4.5</span>
+        版本 <span id="ver">1.4.6</span>
       </div>
     </section>
   </div>
@@ -222,8 +222,13 @@
         <button class="btn small soft" id="btnExportCsv">导出 CSV</button>
         <button class="btn small" id="btnExportMd">导出 MD</button>
       </div>
-      <h2 id="dTitle">歌单</h2>
-      <div class="sub" id="dMeta" style="font-size:13px;color:var(--muted);margin:-4px 0 12px"></div>
+      <div class="hero" id="dHero" hidden>
+        <img id="dCover" alt="">
+        <div class="h-body">
+          <h2 id="dTitle">歌单</h2>
+          <div class="h-meta" id="dMeta"></div>
+        </div>
+      </div>
       <div class="tracks" id="dList"><div class="empty">加载中…</div></div>
       <div class="hint" id="dState"></div>
     </section>
@@ -265,6 +270,15 @@ function disp(s) {
   if (DISP === 'skeleton') return t.replace(/[\p{Mn}\p{Mc}\p{Cf}]/gu, '');
   return t;
 }
+
+const imgUrl = (u, size) => {
+  if (!u) return '';
+  const url = String(u).replace(/^http:\/\//, 'https://');
+  return url + (url.includes('?') ? '&' : '?') + 'param=' + size + 'y' + size;
+};
+const thumbHtml = (u, size) => u
+  ? '<img class="thumb" loading="lazy" src="' + esc(imgUrl(u, size)) + '" alt="" onerror="this.style.visibility=\'hidden\'">'
+  : '<span class="thumb"></span>';
 
 const maskPl = (name, idx) => PRIVACY ? '歌单 ' + String(idx + 1).padStart(3, '0') : name;
 const maskNick = () => PRIVACY ? '账号 1' : nickname;
@@ -490,7 +504,7 @@ function renderPlaylistList() {
     const flags = [];
     if (!p.mine) flags.push('<span class="badge">收藏</span>');
     if (p.privacy === 10) flags.push('<span class="badge">私密</span>');
-    return '<button class="row" data-id="' + p.id + '">' +
+    return '<button class="row" data-id="' + p.id + '">' + thumbHtml(p.cover, 96) +
       '<div class="body"><div class="title">' + flags.join('') + esc(maskPl(disp(p.name), i)) + '</div>' +
       '<div class="meta">' + (p.mine ? '我创建的' : esc(p.creator || '未知作者')) + ' · ' + (p.count || 0) + ' 首</div></div>' +
       '<div class="tail">›</div></button>';
@@ -521,6 +535,14 @@ async function openDetail(kind, id) {
     const d = kind === 'pl' ? await inv('playlist_detail', { id }) : await inv('album_detail', { id });
     detailRows = d.rows || [];
     $('dTitle').textContent = d.name || (kind === 'pl' ? '歌单' : '专辑');
+    if (d.cover) {
+      $('dHero').hidden = false;
+      $('dCover').src = imgUrl(d.cover, 300);
+      $('dCover').onerror = function () { this.style.visibility = 'hidden'; };
+      $('dCover').style.visibility = 'visible';
+    } else {
+      $('dHero').hidden = true;
+    }
     if (kind === 'pl') {
       $('dMeta').textContent = '曲目 ' + (d.count || detailRows.length) + ' 首';
     } else {
@@ -744,7 +766,8 @@ async function tidyScope(kind) {
     }
     pushLog(true, KIND_NAME[kind], r.items + ' 项 → ' + (r.sub || '导出目录'));
     if (r.failed) pushLog(false, KIND_NAME[kind], r.failed + ' 项写入失败');
-    setBatch('整理完成：' + r.items + ' 个，' + r.files + ' 个文件，' + r.songs + ' 首 → ' + (r.sub || '导出目录') +
+    setBatch('整理完成：' + r.items + ' 个，' + r.files + ' 个文件，' + r.songs + ' 首' +
+      (r.unique ? '（去重 ' + r.unique + ' 首）' : '') + ' → ' + (r.sub || '导出目录') +
       (filled ? '（补厂牌 ' + filled + ' 张）' : ''));
     setMeta([r.items + ' 项', r.files + ' 个文件', r.songs + ' 首', '用时 ' + fmtSec(sec)]);
     setJob(false, '整理完成', r.failed ? 'err' : 'ok');
@@ -813,7 +836,7 @@ function renderAlbums() {
   const MAX = 400;
   const shown = list.slice(0, MAX);
   let html = shown.map((a, i) =>
-    '<button class="row" data-aid="' + a.id + '"><div class="body">' +
+    '<button class="row" data-aid="' + a.id + '">' + thumbHtml(a.pic, 96) + '<div class="body">' +
     '<div class="title">' + esc(maskPl(disp(a.name), i)) + '</div>' +
     '<div class="meta">' + esc(a.artists || '未知') + ' · ' + esc(a.company || '未标注厂牌') + ' · ' + (a.size || 0) + ' 首</div>' +
     '</div><div class="tail">›</div></button>').join('');
@@ -846,7 +869,7 @@ function renderFavlist() {
   if (!el) return;
   el.innerHTML = FAVLIST.length
     ? FAVLIST.slice(0, 300).map((p, i) =>
-      '<button class="row" data-fid="' + p.id + '"><div class="body">' +
+      '<button class="row" data-fid="' + p.id + '">' + thumbHtml(p.cover, 96) + '<div class="body">' +
       '<div class="title">' + esc(maskPl(disp(p.name), i)) + '</div>' +
       '<div class="meta">' + esc(p.creator || '未知作者') + ' · ' + (p.count || 0) + ' 首</div></div>' +
       '<div class="tail">›</div></button>').join('')
