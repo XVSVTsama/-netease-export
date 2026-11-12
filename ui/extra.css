@@ -96,3 +96,16 @@ header.top{padding-top:env(safe-area-inset-top,0px)}
 /* 首页两组操作：平时同色，按下瞬间变红 */
 .btn.act { background: var(--bg-elev); color: var(--text); }
 .btn.act:active, .btn.act.pressing { background: var(--accent); color: #fff; }
+
+/* ---------- 主题色（一个色出整套外观，思路借鉴 prism_ui） ---------- */
+html[data-accent="blue"] { --accent: #0a84ff; --accent-soft: #e5f1ff; }
+html[data-theme="dark"][data-accent="blue"] { --accent-soft: #0b2740; }
+html[data-accent="green"] { --accent: #1db954; --accent-soft: #e6f8ec; }
+html[data-theme="dark"][data-accent="green"] { --accent-soft: #0d2a18; }
+html[data-accent="purple"] { --accent: #bf5af2; --accent-soft: #f5e8ff; }
+html[data-theme="dark"][data-accent="purple"] { --accent-soft: #2a1038; }
+html[data-accent="orange"] { --accent: #ff9f0a; --accent-soft: #fff1dd; }
+html[data-theme="dark"][data-accent="orange"] { --accent-soft: #3a2503; }
+
+#accentRow .chip { display: inline-flex; align-items: center; gap: 8px; }
+#accentRow .swatch { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }

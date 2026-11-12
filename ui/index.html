@@ -208,6 +208,19 @@
     </section>
 
     <section class="section">
+      <h2>外观</h2>
+      <div class="row-label">主题色</div>
+      <div class="accs" id="accentRow">
+        <button class="chip on" data-a="red"><span class="swatch" style="background:#fa2d48"></span>红</button>
+        <button class="chip" data-a="blue"><span class="swatch" style="background:#0a84ff"></span>蓝</button>
+        <button class="chip" data-a="green"><span class="swatch" style="background:#1db954"></span>绿</button>
+        <button class="chip" data-a="purple"><span class="swatch" style="background:#bf5af2"></span>紫</button>
+        <button class="chip" data-a="orange"><span class="swatch" style="background:#ff9f0a"></span>橙</button>
+      </div>
+      <div class="hint" id="accentState">换一个色，按钮、标签、进度条跟着变</div>
+    </section>
+
+    <section class="section">
       <h2>关于</h2>
       <div class="hint">
         导出文件写入上面设置的目录（默认 <code>/sdcard/Download/网易云导出</code>），同时在应用私有目录留一份。<br>
@@ -1032,6 +1045,19 @@ $('btnDirSave').onclick = async () => {
   } catch (e) { setHint('dirState', '保存失败：' + e); }
 };
 inv('app_version').then(v => { if (v) $('ver').textContent = v; }).catch(() => {});
+
+/* ---------- 主题色 ---------- */
+function applyAccent(a) {
+  document.documentElement.dataset.accent = a;
+  try { localStorage.setItem('ne.accent', a); } catch (e) {}
+  document.querySelectorAll('#accentRow .chip').forEach(b => b.classList.toggle('on', b.dataset.a === a));
+}
+document.querySelectorAll('#accentRow .chip').forEach(b => { b.onclick = () => applyAccent(b.dataset.a); });
+(function initAccent() {
+  let a = 'red';
+  try { a = localStorage.getItem('ne.accent') || 'red'; } catch (e) {}
+  applyAccent(a);
+})();
 
 /* ---------- 专项 ---------- */
 let spAll = [], spFilter = 'all', spPage = 0;
