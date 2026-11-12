@@ -14,8 +14,9 @@ const ALBUM_GAP_MIN: u64 = 180;
 const ALBUM_GAP_START: u64 = 250;
 const ALBUM_GAP_MAX: u64 = 1000;
 
-const UA_WEB: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-const UA_APP: &str = "NeteaseMusic/8.9.70.240407164325(8009070);Dalvik/2.1.0 (Linux; U; Android 13; PJZ110 Build/TP1A.220905.001)";
+pub const UA_WEB: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+pub const UA_MOBILE: &str = "Mozilla/5.0 (Linux; Android 13; PJZ110) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+pub const UA_APP: &str = "NeteaseMusic/8.9.70.240407164325(8009070);Dalvik/2.1.0 (Linux; U; Android 13; PJZ110 Build/TP1A.220905.001)";
 const API: &str = "https://music.163.com";
 
 pub struct Client {
@@ -97,6 +98,79 @@ impl Client {
                 self.set_cookie(s);
             }
         }
+    }
+
+    /// 单次 weapi（不重试），可指定 UA；重试策略交给调用方
+    pub async fn weapi_once(&self, path: &str, body: Value, ua: &str) -> Result<Value, String> {
+        let form = crypto::weapi_body(&body);
+        let ck = self.cookie_header();
+        let gap = self.album_gap.load(Ordering::Relaxed);
+        self.wait_gate(Duration::from_millis(gap)).await;
+        let mut req = self
+            .http
+            .post(format!("{}{}", API, path))
+            .header(reqwest::header::USER_AGENT, ua)
+            .header(reqwest::header::REFERER, "https://music.163.com/")
+            .timeout(Duration::from_secs(8))
+            .form(&form);
+        if !ck.is_empty() {
+            req = req.header(reqwest::header::COOKIE, ck);
+        }
+        match req.send().await {
+            Ok(resp) => {
+                self.store_set_cookie(&resp);
+                let status = resp.status();
+                match resp.json::<Value>().await {
+                    Ok(v) => {
+                        let ok = v["code"].as_i64().unwrap_or(200) == 200;
+                        self.tune_album_gap(ok);
+                        Ok(v)
+                    }
+                    Err(e) => {
+                        self.tune_album_gap(false);
+                        Err(format!("HTTP {} 解析失败 {}", status.as_u16(), e))
+                    }
+                }
+            }
+            Err(e) => {
+                self.tune_album_gap(false);
+                Err(e.to_string())
+            }
+        }
+    }
+
+    /// 单次 eapi（不重试）
+    pub async fn eapi_once(&self, short: &str, body: Value) -> Result<Value, String> {
+        let mut obj = body.clone();
+        obj["header"] = serde_json::json!({
+            "os": "android", "appver": "8.9.70", "osver": "13",
+            "deviceId": "com.netease.cloudmusic",
+            "buildver": "1793900000", "resolution": "1440x3200", "mobilename": "PJZ110"
+        });
+        let params = crypto::eapi_params(&format!("/api{}", short), &obj);
+        let ck = self.cookie_header();
+        let cookie = if ck.is_empty() {
+            "os=android; appver=8.9.70; osver=13".to_string()
+        } else {
+            format!("{}; os=android; appver=8.9.70; osver=13", ck)
+        };
+        self.wait_gate(MIN_GAP).await;
+        let resp = self
+            .http
+            .post(format!("{}/eapi{}", API, short))
+            .header(reqwest::header::USER_AGENT, UA_APP)
+            .header(reqwest::header::COOKIE, cookie)
+            .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .timeout(Duration::from_secs(8))
+            .body(format!("params={}", params))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        self.store_set_cookie(&resp);
+        let status = resp.status();
+        resp.json::<Value>()
+            .await
+            .map_err(|e| format!("HTTP {} 解析失败 {}", status.as_u16(), e))
     }
 
     pub async fn weapi(&self, path: &str, body: Value) -> Result<Value, String> {

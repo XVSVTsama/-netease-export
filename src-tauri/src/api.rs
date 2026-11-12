@@ -165,6 +165,57 @@ pub fn companies_load(map: HashMap<i64, String>) {
 }
 
 /// 批量补厂牌（并发 4，实际速率由 Client 的全局限速控制）
+/// 单张专辑查厂牌：三种办法各试 10 次，全部失败才认输
+async fn album_company(c: &Client, aid: i64) -> Result<String, String> {
+    let path = format!("/weapi/v1/album/{}", aid);
+    let mut last = String::from("未知错误");
+    let backoff = |attempt: u64| std::time::Duration::from_millis(200 + attempt * 150);
+
+    let mut net_errs = 0u32;
+    // 办法一：网页 UA
+    for attempt in 0..10u64 {
+        match c.weapi_once(&path, json!({}), crate::client::UA_WEB).await {
+            Ok(v) if v["code"].as_i64() == Some(200) => {
+                return Ok(v["album"]["company"].as_str().unwrap_or("").to_string());
+            }
+            Ok(v) => { net_errs = 0; last = format!("weapi/web code {}", v["code"]); }
+            Err(e) => { net_errs += 1; last = e; }
+        }
+        if net_errs >= 3 { break; }
+        tokio::time::sleep(backoff(attempt)).await;
+    }
+    net_errs = 0;
+    // 办法二：移动端 UA
+    for attempt in 0..10u64 {
+        match c.weapi_once(&path, json!({}), crate::client::UA_MOBILE).await {
+            Ok(v) if v["code"].as_i64() == Some(200) => {
+                return Ok(v["album"]["company"].as_str().unwrap_or("").to_string());
+            }
+            Ok(v) => { net_errs = 0; last = format!("weapi/mobile code {}", v["code"]); }
+            Err(e) => { net_errs += 1; last = e; }
+        }
+        if net_errs >= 3 { break; }
+        tokio::time::sleep(backoff(attempt)).await;
+    }
+    net_errs = 0;
+    // 办法三：eapi
+    for attempt in 0..10u64 {
+        match c.eapi_once(&format!("/v1/album/{}", aid), json!({ "id": aid.to_string() })).await {
+            Ok(v) if v["code"].as_i64() == Some(200) => {
+                let cmp = v["album"]["company"].as_str()
+                    .or_else(|| v["song"]["album"]["company"].as_str())
+                    .unwrap_or("");
+                return Ok(cmp.to_string());
+            }
+            Ok(v) => { net_errs = 0; last = format!("eapi code {}", v["code"]); }
+            Err(e) => { net_errs += 1; last = e; }
+        }
+        if net_errs >= 3 { break; }
+        tokio::time::sleep(backoff(attempt)).await;
+    }
+    Err(last)
+}
+
 /// 按 id 批量补厂牌：返回 (专辑 -> 厂牌, 失败的专辑 id, 最后一个错误)
 /// 厂牌为空字符串表示查询成功但网易没有标注，与请求失败要区分开
 pub async fn fill_companies(
@@ -178,28 +229,17 @@ pub async fn fill_companies(
         let futs = chunk.iter().map(|aid| {
             let c = c;
             let aid = *aid;
-            async move {
-                let r = c.weapi(&format!("/weapi/v1/album/{}", aid), json!({})).await;
-                (aid, r)
-            }
+            async move { (aid, album_company(c, aid).await) }
         });
         for (aid, res) in join_all(futs).await {
             match res {
-                Ok(v) => {
-                    let code = v["code"].as_i64().unwrap_or(0);
-                    if code != 200 {
-                        failed.insert(aid);
-                        last_err = Some(format!("专辑 {} 返回 code {} {}", aid, code,
-                            v["message"].as_str().unwrap_or("")));
-                        continue;
-                    }
-                    let company = v["album"]["company"].as_str().unwrap_or("").to_string();
+                Ok(company) => {
                     company_cache().lock().unwrap().insert(aid, company.clone());
                     out.insert(aid, company);
                 }
                 Err(e) => {
                     failed.insert(aid);
-                    last_err = Some(e);
+                    last_err = Some(format!("专辑 {}：{}", aid, e));
                 }
             }
         }
