@@ -10,9 +10,9 @@ const MIN_GAP: Duration = Duration::from_millis(160);
 const RETRIES: usize = 2;
 
 /// 专辑接口（weapi）的放行间隔，毫秒。自适应：成功收紧，失败放宽
-const ALBUM_GAP_MIN: u64 = 40;
-const ALBUM_GAP_START: u64 = 60;
-const ALBUM_GAP_MAX: u64 = 800;
+const ALBUM_GAP_MIN: u64 = 180;
+const ALBUM_GAP_START: u64 = 250;
+const ALBUM_GAP_MAX: u64 = 1000;
 
 const UA_WEB: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const UA_APP: &str = "NeteaseMusic/8.9.70.240407164325(8009070);Dalvik/2.1.0 (Linux; U; Android 13; PJZ110 Build/TP1A.220905.001)";

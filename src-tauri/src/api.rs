@@ -167,7 +167,7 @@ pub async fn fill_companies(
     let mut out = HashMap::new();
     let mut failed: std::collections::HashSet<i64> = std::collections::HashSet::new();
     let mut last_err: Option<String> = None;
-    for chunk in ids.chunks(12) {
+    for chunk in ids.chunks(4) {
         let futs = chunk.iter().map(|aid| {
             let c = c;
             let aid = *aid;
