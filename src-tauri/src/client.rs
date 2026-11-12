@@ -91,6 +91,7 @@ impl Client {
                 .post(format!("{}{}", API, path))
                 .header(reqwest::header::USER_AGENT, UA_WEB)
                 .header(reqwest::header::REFERER, "https://music.163.com/")
+                .timeout(Duration::from_secs(8))
                 .form(&form);
             if !ck.is_empty() {
                 req = req.header(reqwest::header::COOKIE, ck.clone());

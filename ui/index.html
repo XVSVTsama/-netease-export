@@ -657,7 +657,7 @@ function renderLogs(logs) {
   if (logs.length === LOGLEN) return;
   LOGLEN = logs.length;
   const box = $('jobLog');
-  box.innerHTML = logs.map(l => '<div class="lg ' + l.k + '">' +
+  box.innerHTML = logs.map(l => '<div class="lg k-' + l.k + '">' +
     (l.ts ? '<span class="ts">' + esc(l.ts) + '</span>' : '') + esc(l.t) + '</div>').join('');
   box.scrollTop = box.scrollHeight;
 }

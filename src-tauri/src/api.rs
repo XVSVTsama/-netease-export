@@ -158,28 +158,42 @@ pub fn companies_load(map: HashMap<i64, String>) {
 }
 
 /// 批量补厂牌（并发 4，实际速率由 Client 的全局限速控制）
-pub async fn fill_companies(c: &Client, ids: &[i64]) -> HashMap<i64, String> {
+/// 按 id 批量补厂牌：返回 (专辑 -> 厂牌, 失败数, 最后一个错误)
+pub async fn fill_companies(c: &Client, ids: &[i64]) -> (HashMap<i64, String>, usize, Option<String>) {
     let mut out = HashMap::new();
-    for chunk in ids.chunks(4) {
+    let mut failed = 0usize;
+    let mut last_err: Option<String> = None;
+    for chunk in ids.chunks(3) {
         let futs = chunk.iter().map(|aid| {
             let c = c;
             let aid = *aid;
             async move {
-                let v = c.weapi(&format!("/weapi/v1/album/{}", aid), json!({})).await.ok();
-                let company = v.as_ref()
-                    .and_then(|x| x["album"]["company"].as_str())
-                    .unwrap_or("").to_string();
-                (aid, company, v.is_some())
+                let r = c.weapi(&format!("/weapi/v1/album/{}", aid), json!({})).await;
+                (aid, r)
             }
         });
-        for (aid, company, ok) in join_all(futs).await {
-            if ok {
-                company_cache().lock().unwrap().insert(aid, company.clone());
-                out.insert(aid, company);
+        for (aid, res) in join_all(futs).await {
+            match res {
+                Ok(v) => {
+                    let code = v["code"].as_i64().unwrap_or(0);
+                    if code != 200 {
+                        failed += 1;
+                        last_err = Some(format!("专辑 {} 返回 code {} {}", aid, code,
+                            v["message"].as_str().unwrap_or("")));
+                        continue;
+                    }
+                    let company = v["album"]["company"].as_str().unwrap_or("").to_string();
+                    company_cache().lock().unwrap().insert(aid, company.clone());
+                    out.insert(aid, company);
+                }
+                Err(e) => {
+                    failed += 1;
+                    last_err = Some(e);
+                }
             }
         }
     }
-    out
+    (out, failed, last_err)
 }
 
 /// 歌单详情：曲目 + 专辑信息（含厂牌）
@@ -233,7 +247,7 @@ pub async fn playlist_detail(c: &Client, id: i64, with_company: bool) -> Result<
     }
     if with_company {
         let need: Vec<i64> = album_ids.iter().filter(|a| !companies.contains_key(a)).cloned().collect();
-        let filled = fill_companies(c, &need).await;
+        let (filled, _failed, _err) = fill_companies(c, &need).await;
         for (aid, company) in filled { companies.insert(aid, company); }
     }
     for row in rows.iter_mut() {

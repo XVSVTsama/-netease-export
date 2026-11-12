@@ -554,7 +554,7 @@ async fn do_fill(app: &tauri::AppHandle, client: &Client, kind: &str, limit: usi
     }
     let remaining_total = need.len();
     if need.len() > limit { need.truncate(limit); }
-    let found = api::fill_companies(client, &need).await;
+    let (found, _failed, _err) = api::fill_companies(client, &need).await;
 
     let mut updated = 0usize;
     for (p, mut d) in files {
@@ -763,13 +763,56 @@ async fn fill_all(app: &tauri::AppHandle, client: &Client, job: &Job, kind: &str
     if rest > 0 { job.log("warn", format!("还有 {} 张留到下次整理继续（分批不影响文档生成）", rest)); }
 
     let mut found: HashMap<i64, String> = HashMap::new();
-    for (i, chunk) in need.chunks(60).enumerate() {
+    let mut fail_total = 0usize;
+    let mut fail_streak = 0usize;
+    let mut last_err: Option<String> = None;
+
+    // 预检：先取 3 张探路，全部失败说明网络或风控有问题，别把 3000 张空跑完
+    let probe_n = need.len().min(3);
+    let probe: Vec<i64> = need.drain(..probe_n).collect();
+    let (got0, failed0, err0) = api::fill_companies(client, &probe).await;
+    if got0.is_empty() && failed0 > 0 {
+        let why = err0.unwrap_or_else(|| "请求全部失败".to_string());
+        job.log("err", format!("补厂牌预检失败：{}", why));
+        return Err(format!("补厂牌预检失败（{}/{} 张）：{}。请保持 App 在前台并检查网络后重试",
+            failed0, probe_n, why));
+    }
+    found.extend(got0);
+    job.phase_done.store(probe_n, Ordering::SeqCst);
+    job.ok.store(found.len(), Ordering::SeqCst);
+    job.log("info", format!("补厂牌预检通过（{} 张）", probe_n));
+
+    const BATCH: usize = 30;
+    for (i, chunk) in need.chunks(BATCH).enumerate() {
         if job.stop.load(Ordering::SeqCst) { break; }
-        let got = api::fill_companies(client, chunk).await;
+        let (got, failed, err) = api::fill_companies(client, chunk).await;
+        let before = found.len();
         found.extend(got);
-        let done = ((i + 1) * 60).min(total);
+        let fresh = found.len() - before;
+        fail_total += failed;
+        if let Some(e) = err { last_err = Some(e); }
+        let done = (probe_n + (i + 1) * BATCH).min(total);
         job.phase_done.store(done, Ordering::SeqCst);
-        job.log("info", format!("补厂牌 {}/{}（已取到 {} 张）", done, total, found.len()));
+        job.ok.store(found.len(), Ordering::SeqCst);
+        if failed == 0 {
+            job.log("info", format!("补厂牌 {}/{}（成功 {} 张）", done, total, found.len()));
+        } else {
+            job.log("warn", format!("补厂牌 {}/{}（成功 {} 张 · 失败 {} 张）", done, total, found.len(), failed));
+        }
+        if fresh == 0 && failed > 0 {
+            fail_streak += 1;
+        } else {
+            fail_streak = 0;
+        }
+        if fail_streak >= 2 {
+            let why = last_err.unwrap_or_else(|| "请求全部失败".to_string());
+            job.log("err", format!("补厂牌中止：连续 {} 批全部失败，{}", fail_streak, why));
+            return Err(format!("连续 {} 批失败（共 {} 张）：{}。请保持 App 在前台并检查网络后重试",
+                fail_streak, fail_total + failed0, why));
+        }
+    }
+    if fail_total + failed0 > 0 {
+        job.log("warn", format!("补厂牌结束：成功 {} 张，失败 {} 张", found.len(), fail_total + failed0));
     }
 
     let mut updated = 0usize;
@@ -845,7 +888,11 @@ async fn run_job(
         job.log("step", "整理：补厂牌并生成文档");
         match fill_all(&app, &client, job.as_ref(), &kind).await {
             Ok((found, updated)) => job.log("ok", format!("补厂牌完成：{} 张，回写 {} 个", found, updated)),
-            Err(e) => job.log("err", format!("补厂牌失败：{}", e)),
+            Err(e) => {
+                job.fail.fetch_add(1, Ordering::SeqCst);
+                job.log("err", format!("补厂牌失败：{}", e));
+                job.log("warn", "继续生成文档，但这些歌的厂牌列会是空的");
+            }
         }
         job.set_phase("tidy-doc");
         match do_tidy(&app, &kind).await {
@@ -874,6 +921,7 @@ async fn run_job(
     }
 
     set_state(&app, "lastSync", &now_human());
+    job.ok.store(ok, Ordering::SeqCst);
     job.set_phase("done");
     job.running.store(false, Ordering::SeqCst);
     job.log("done", format!("完成：成功 {} · 失败 {} · {} 首", ok, fail, songs));

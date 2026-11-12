@@ -42,13 +42,13 @@ header.top{padding-top:env(safe-area-inset-top,0px)}
   margin: 10px 0 2px; padding: 0 2px 2px; max-height: 190px; overflow-y: auto;
   font-size: 12.5px; line-height: 1.5; font-variant-numeric: tabular-nums;
 }
-.job-log .lg { padding: 3px 8px; border-radius: 6px; margin-bottom: 2px; word-break: break-word; }
-.job-log .lg.ok { color: var(--ok); }
-.job-log .lg.err { color: var(--accent); }
-.job-log .lg.step { color: var(--text); font-weight: 600; background: var(--bg-elev); }
-.job-log .lg.info { color: var(--muted); }
-.job-log .lg.warn { color: var(--warn); }
-.job-log .lg.done { color: var(--text); font-weight: 600; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 5px; }
+.job-log .lg { padding: 3px 8px; border-radius: 6px; margin-bottom: 2px; word-break: break-word; width: auto; height: auto; display: block; border: 0; line-height: 1.5; }
+.job-log .lg.k-ok { color: var(--ok); }
+.job-log .lg.k-err { color: var(--accent); }
+.job-log .lg.k-step { color: var(--text); font-weight: 600; background: var(--bg-elev); }
+.job-log .lg.k-info { color: var(--muted); }
+.job-log .lg.k-warn { color: var(--warn); }
+.job-log .lg.k-done { color: var(--text); font-weight: 600; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 5px; }
 
 .dot.run { animation: eta-pulse 1.3s ease-in-out infinite; }
 @keyframes eta-pulse {
