@@ -158,10 +158,14 @@ pub fn companies_load(map: HashMap<i64, String>) {
 }
 
 /// 批量补厂牌（并发 4，实际速率由 Client 的全局限速控制）
-/// 按 id 批量补厂牌：返回 (专辑 -> 厂牌, 失败数, 最后一个错误)
-pub async fn fill_companies(c: &Client, ids: &[i64]) -> (HashMap<i64, String>, usize, Option<String>) {
+/// 按 id 批量补厂牌：返回 (专辑 -> 厂牌, 失败的专辑 id, 最后一个错误)
+/// 厂牌为空字符串表示查询成功但网易没有标注，与请求失败要区分开
+pub async fn fill_companies(
+    c: &Client,
+    ids: &[i64],
+) -> (HashMap<i64, String>, std::collections::HashSet<i64>, Option<String>) {
     let mut out = HashMap::new();
-    let mut failed = 0usize;
+    let mut failed: std::collections::HashSet<i64> = std::collections::HashSet::new();
     let mut last_err: Option<String> = None;
     for chunk in ids.chunks(3) {
         let futs = chunk.iter().map(|aid| {
@@ -177,7 +181,7 @@ pub async fn fill_companies(c: &Client, ids: &[i64]) -> (HashMap<i64, String>, u
                 Ok(v) => {
                     let code = v["code"].as_i64().unwrap_or(0);
                     if code != 200 {
-                        failed += 1;
+                        failed.insert(aid);
                         last_err = Some(format!("专辑 {} 返回 code {} {}", aid, code,
                             v["message"].as_str().unwrap_or("")));
                         continue;
@@ -187,7 +191,7 @@ pub async fn fill_companies(c: &Client, ids: &[i64]) -> (HashMap<i64, String>, u
                     out.insert(aid, company);
                 }
                 Err(e) => {
-                    failed += 1;
+                    failed.insert(aid);
                     last_err = Some(e);
                 }
             }
@@ -248,8 +252,7 @@ pub async fn playlist_detail(c: &Client, id: i64, with_company: bool) -> Result<
     if with_company {
         let need: Vec<i64> = album_ids.iter().filter(|a| !companies.contains_key(a)).cloned().collect();
         let (filled, _failed, _err) = fill_companies(c, &need).await;
-        for (aid, company) in filled { companies.insert(aid, company); }
-    }
+        for (aid, company) in filled { companies.insert(aid, company); }    }
     for row in rows.iter_mut() {
         if let Some(aid) = row["alId"].as_i64() {
             if let Some(cmp) = companies.get(&aid) {

@@ -575,7 +575,9 @@ function renderDetail() {
   const shown = detailRows.slice(0, (detailPage + 1) * PAGE);
   let html = shown.map((r, i) => {
     const flag = r.ncr ? '<span class="tag">仅其他版本</span>' : '';
-    const meta = [r.ar, r.al, r.company || '未标注厂牌'].filter(Boolean).map(esc).join(' · ');
+    const cmp = r.company || (r.cstate === 'none' ? '未标注厂牌'
+      : r.cstate === 'fail' ? '厂牌查询失败' : '厂牌未查询');
+    const meta = [r.ar, r.al, cmp].filter(Boolean).map(esc).join(' · ');
     return '<div class="track"><span class="idx">' + (i + 1) + '</span><div class="body">' +
       '<div class="title">' + esc(disp(r.name)) + flag + '</div><div class="meta">' + meta + '</div></div>' +
       '<span class="tail">' + fmtDur(r.dur) + '</span></div>';

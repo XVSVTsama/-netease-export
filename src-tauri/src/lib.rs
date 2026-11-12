@@ -127,12 +127,55 @@ fn fmt_dur(ms: i64) -> String {
     format!("{}:{:02}", total / 60, total % 60)
 }
 
+/// 厂牌列的显示文本：区分「有厂牌 / 网易未标注 / 查询失败 / 还没查」
+fn company_text(r: &Value) -> &str {
+    let c = r["company"].as_str().unwrap_or("");
+    if !c.is_empty() { return c; }
+    match r["cstate"].as_str() {
+        Some("none") => "未标注厂牌",
+        Some("fail") => "查询失败",
+        _ => "未查询",
+    }
+}
+
+/// 把查询结果写回行：记录 cstate，区分「网易没标注」和「请求失败」
+/// 返回是否有改动
+fn apply_companies(
+    rows: &mut Vec<Value>,
+    found: &std::collections::HashMap<i64, String>,
+    failed: &std::collections::HashSet<i64>,
+) -> bool {
+    let mut changed = false;
+    for r in rows.iter_mut() {
+        let aid = match r["alId"].as_i64() {
+            Some(a) if a > 0 => a,
+            _ => continue,
+        };
+        let cur = r["company"].as_str().unwrap_or("");
+        if let Some(cmp) = found.get(&aid) {
+            if !cmp.is_empty() {
+                if cur.is_empty() {
+                    r["company"] = serde_json::json!(cmp);
+                    r["cstate"] = serde_json::json!("have");
+                    changed = true;
+                }
+            } else if cur.is_empty() && r["cstate"].as_str() != Some("none") {
+                r["cstate"] = serde_json::json!("none");
+                changed = true;
+            }
+        } else if failed.contains(&aid) && cur.is_empty() && r["cstate"].as_str() != Some("fail") {
+            r["cstate"] = serde_json::json!("fail");
+            changed = true;
+        }
+    }
+    changed
+}
+
 fn to_csv(d: &Value) -> String {
     let mut out = String::from("\u{feff}序号,歌名,制作人/团体,专辑,发行公司/厂牌,时长,时长秒,歌曲ID,专辑ID,流行度,MV_ID,别名,权限,状态\n");
     if let Some(rows) = d["rows"].as_array() {
         for (i, r) in rows.iter().enumerate() {
             let e = |v: &Value| format!("\"{}\"", v.as_str().unwrap_or("").replace('"', "\"\""));
-            let company = r["company"].as_str().unwrap_or("");
             let fee = r["fee"].as_i64().unwrap_or(0);
             let perm = match fee { 0 => "免费", 1 => "VIP", 4 => "付费专辑", 8 => "低音质", _ => "其他" };
             out.push_str(&format!(
@@ -141,7 +184,7 @@ fn to_csv(d: &Value) -> String {
                 e(&r["name"]),
                 e(&r["ar"]),
                 e(&r["al"]),
-                if company.is_empty() { "\"未标注厂牌\"".to_string() } else { e(&r["company"]) },
+                format!("\"{}\"", company_text(r).replace('"', "\"\"")),
                 fmt_dur(r["dur"].as_i64().unwrap_or(0)),
                 r["dur"].as_i64().unwrap_or(0) / 1000,
                 r["id"].as_i64().unwrap_or(0),
@@ -164,14 +207,13 @@ fn to_md(d: &Value) -> String {
         now_human());
     if let Some(rows) = d["rows"].as_array() {
         for (i, r) in rows.iter().enumerate() {
-            let company = r["company"].as_str().unwrap_or("");
             let mark = if r["ncr"].as_bool().unwrap_or(false) { "  〔仅其他版本可播〕" } else { "" };
             out.push_str(&format!("{}. {} - {} - {} - {}  〔{}〕{}\n",
                 i + 1,
                 r["name"].as_str().unwrap_or(""),
                 r["ar"].as_str().unwrap_or("未知"),
                 r["al"].as_str().unwrap_or("未知"),
-                if company.is_empty() { "未标注厂牌" } else { company },
+                company_text(r),
                 fmt_dur(r["dur"].as_i64().unwrap_or(0)),
                 mark));
         }
@@ -544,7 +586,8 @@ async fn do_fill(app: &tauri::AppHandle, client: &Client, kind: &str, limit: usi
         if let Some(rows) = d["rows"].as_array() {
             for r in rows {
                 let empty = r["company"].as_str().map(|s| s.is_empty()).unwrap_or(true);
-                if empty {
+                let known_none = r["cstate"].as_str() == Some("none");
+                if empty && !known_none {
                     if let Some(aid) = r["alId"].as_i64() {
                         if aid > 0 && seen.insert(aid) { need.push(aid); }
                     }
@@ -554,23 +597,14 @@ async fn do_fill(app: &tauri::AppHandle, client: &Client, kind: &str, limit: usi
     }
     let remaining_total = need.len();
     if need.len() > limit { need.truncate(limit); }
-    let (found, _failed, _err) = api::fill_companies(client, &need).await;
+    let (found, failed_ids, _err) = api::fill_companies(client, &need).await;
 
     let mut updated = 0usize;
     for (p, mut d) in files {
-        let mut changed = false;
-        if let Some(rows) = d["rows"].as_array_mut() {
-            for r in rows {
-                if let Some(aid) = r["alId"].as_i64() {
-                    if let Some(cmp) = found.get(&aid) {
-                        if !cmp.is_empty() && r["company"].as_str().unwrap_or("").is_empty() {
-                            r["company"] = serde_json::json!(cmp);
-                            changed = true;
-                        }
-                    }
-                }
-            }
-        }
+        let changed = match d["rows"].as_array_mut() {
+            Some(rows) => apply_companies(rows, &found, &failed_ids),
+            None => false,
+        };
         if changed {
             updated += 1;
             let _ = fs::write(&p, d.to_string());
@@ -742,7 +776,8 @@ async fn fill_all(app: &tauri::AppHandle, client: &Client, job: &Job, kind: &str
         if let Some(rows) = d["rows"].as_array() {
             for r in rows {
                 let empty = r["company"].as_str().map(|s| s.is_empty()).unwrap_or(true);
-                if empty {
+                let known_none = r["cstate"].as_str() == Some("none");
+                if empty && !known_none {
                     if let Some(aid) = r["alId"].as_i64() {
                         if aid > 0 && seen.insert(aid) { need.push(aid); }
                     }
@@ -771,11 +806,12 @@ async fn fill_all(app: &tauri::AppHandle, client: &Client, job: &Job, kind: &str
     let probe_n = need.len().min(3);
     let probe: Vec<i64> = need.drain(..probe_n).collect();
     let (got0, failed0, err0) = api::fill_companies(client, &probe).await;
-    if got0.is_empty() && failed0 > 0 {
+    let mut failed_all: std::collections::HashSet<i64> = failed0.clone();
+    if got0.is_empty() && !failed0.is_empty() {
         let why = err0.unwrap_or_else(|| "请求全部失败".to_string());
         job.log("err", format!("补厂牌预检失败：{}", why));
         return Err(format!("补厂牌预检失败（{}/{} 张）：{}。请保持 App 在前台并检查网络后重试",
-            failed0, probe_n, why));
+            failed0.len(), probe_n, why));
     }
     found.extend(got0);
     job.phase_done.store(probe_n, Ordering::SeqCst);
@@ -785,11 +821,13 @@ async fn fill_all(app: &tauri::AppHandle, client: &Client, job: &Job, kind: &str
     const BATCH: usize = 30;
     for (i, chunk) in need.chunks(BATCH).enumerate() {
         if job.stop.load(Ordering::SeqCst) { break; }
-        let (got, failed, err) = api::fill_companies(client, chunk).await;
+        let (got, failed_ids, err) = api::fill_companies(client, chunk).await;
         let before = found.len();
         found.extend(got);
         let fresh = found.len() - before;
+        let failed = failed_ids.len();
         fail_total += failed;
+        failed_all.extend(failed_ids.iter().copied());
         if let Some(e) = err { last_err = Some(e); }
         let done = (probe_n + (i + 1) * BATCH).min(total);
         job.phase_done.store(done, Ordering::SeqCst);
@@ -808,33 +846,28 @@ async fn fill_all(app: &tauri::AppHandle, client: &Client, job: &Job, kind: &str
             let why = last_err.unwrap_or_else(|| "请求全部失败".to_string());
             job.log("err", format!("补厂牌中止：连续 {} 批全部失败，{}", fail_streak, why));
             return Err(format!("连续 {} 批失败（共 {} 张）：{}。请保持 App 在前台并检查网络后重试",
-                fail_streak, fail_total + failed0, why));
+                fail_streak, fail_total + failed0.len(), why));
         }
     }
-    if fail_total + failed0 > 0 {
-        job.log("warn", format!("补厂牌结束：成功 {} 张，失败 {} 张", found.len(), fail_total + failed0));
+    if fail_total + failed0.len() > 0 {
+        job.log("warn", format!("补厂牌结束：成功 {} 张，失败 {} 张", found.len(), fail_total + failed0.len()));
     }
 
     let mut updated = 0usize;
     for (p, mut d) in files {
-        let mut changed = false;
-        if let Some(rows) = d["rows"].as_array_mut() {
-            for r in rows {
-                if let Some(aid) = r["alId"].as_i64() {
-                    if let Some(cmp) = found.get(&aid) {
-                        if !cmp.is_empty() && r["company"].as_str().unwrap_or("").is_empty() {
-                            r["company"] = serde_json::json!(cmp);
-                            changed = true;
-                        }
-                    }
-                }
-            }
-        }
+        let changed = match d["rows"].as_array_mut() {
+            Some(rows) => apply_companies(rows, &found, &failed_all),
+            None => false,
+        };
         if changed {
             updated += 1;
             let _ = fs::write(&p, d.to_string());
         }
     }
+    let none_cnt = found.values().filter(|v| v.is_empty()).count();
+    job.log("info", format!("厂牌结果：{} 张有厂牌 · {} 张网易未标注 · {} 张查询失败",
+        found.len() - none_cnt, none_cnt, fail_total + failed0.len()));
+
     if let Ok(dir_app) = app.path().app_data_dir() {
         let snap = api::companies_snapshot();
         let map: serde_json::Map<String, Value> = snap.into_iter()
