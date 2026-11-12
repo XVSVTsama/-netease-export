@@ -709,6 +709,16 @@ mod android_fs {
         Ok(inst)
     }
 
+    /// 打开「所有文件访问权限」的系统设置页
+    pub fn request_storage() -> Result<(), String> {
+        with_env(|env, _ctx| {
+            let act = activity(env)?;
+            env.call_method(&act, "etaRequestStorage", "()V", &[])
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        })
+    }
+
     /// 拉起系统的「选择文件夹」界面（具体 Intent 组装在 MainActivity 里做）
     pub fn pick_dir() -> Result<(), String> {
         with_env(|env, _ctx| {
@@ -780,6 +790,28 @@ async fn pick_export_dir(app: tauri::AppHandle) -> Result<Value, String> {
     {
         let _ = app;
         Err("只有 Android 支持系统目录选择".into())
+    }
+}
+
+#[tauri::command]
+async fn open_storage_settings(app: tauri::AppHandle) -> Result<Value, String> {
+    #[cfg(target_os = "android")]
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            let _ = tx.send(android_fs::request_storage());
+        })
+        .map_err(|e| format!("切主线程失败: {}", e))?;
+        let res = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| format!("打开设置超时: {}", e))?;
+        res?;
+        Ok(serde_json::json!({ "ok": true }))
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Err("只有 Android 需要在系统里授权".into())
     }
 }
 
@@ -1467,7 +1499,7 @@ pub fn run() {
             special_items, export_special, zip_exports, album_detail, export_album,
             stage_one, stage_stats, stage_ids, fill_companies, tidy, check_exports,
             job_start, job_status, job_stop, copy_log,
-            get_export_dir, set_export_dir, check_export_dir, app_version,
+            get_export_dir, set_export_dir, check_export_dir, app_version, open_storage_settings,
             pick_export_dir, take_picked_dir
         ])
         .run(tauri::generate_context!())

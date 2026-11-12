@@ -190,6 +190,9 @@
         <button class="btn" id="btnDirCheck">检测</button>
         <button class="btn primary" id="btnDirSave">保存</button>
       </div>
+      <div class="actions" style="margin-top:8px;grid-template-columns:1fr">
+        <button class="btn" id="btnDirPerm">申请「所有文件访问权限」</button>
+      </div>
       <div class="hint" id="dirState">需要「所有文件访问权限」才能写入公共目录</div>
     </section>
 
@@ -943,6 +946,14 @@ async function loadExportDir() {
   } catch (e) { setHint('dirState', '读取失败：' + e); }
 }
 let pickingDir = false;
+let requestingPerm = false;
+$('btnDirPerm').onclick = async () => {
+  try {
+    await inv('open_storage_settings');
+    requestingPerm = true;
+    setHint('dirState', '在系统设置里打开「所有文件访问权限」，回来后会自动重新检测');
+  } catch (e) { setHint('dirState', '打不开设置页：' + e); }
+};
 $('btnDirPick').onclick = async () => {
   try {
     await inv('pick_export_dir');
@@ -952,7 +963,9 @@ $('btnDirPick').onclick = async () => {
 };
 if (document.addEventListener) {
   document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState !== 'visible' || !pickingDir) return;
+    if (document.visibilityState !== 'visible') return;
+    if (requestingPerm) { requestingPerm = false; loadExportDir(); return; }
+    if (!pickingDir) return;
     pickingDir = false;
     try {
       const r = await inv('take_picked_dir');

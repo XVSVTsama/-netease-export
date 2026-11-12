@@ -73,6 +73,22 @@ jobs:
               etaInstance = this
             }
 
+            fun etaRequestStorage() {
+              val pkgUri = android.net.Uri.parse("package:" + packageName)
+              val target = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, pkgUri)
+              } else {
+                android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkgUri)
+              }
+              try {
+                startActivity(target)
+              } catch (_: Exception) {
+                startActivity(
+                  android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkgUri)
+                )
+              }
+            }
+
             fun etaPickFolder() {
               val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE)
               intent.addFlags(
