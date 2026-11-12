@@ -64,6 +64,15 @@ jobs:
               print('already patched')
               sys.exit(0)
           method = '''
+            companion object {
+              @JvmField var etaInstance: MainActivity? = null
+            }
+
+            override fun onResume() {
+              super.onResume()
+              etaInstance = this
+            }
+
             fun etaPickFolder() {
               val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE)
               intent.addFlags(

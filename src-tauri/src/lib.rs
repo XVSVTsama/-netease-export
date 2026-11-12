@@ -628,8 +628,8 @@ mod android_fs {
     use jni::JavaVM;
     use std::sync::OnceLock;
 
-    // ndk_context 给的是主线程的 local ref，跨线程用会直接崩，这里升级成全局引用
-    static ACTIVITY: OnceLock<GlobalRef> = OnceLock::new();
+    // ndk_context 给的是 Application 的 local ref（不是 Activity），跨线程用会崩，先升成全局引用
+    static APP_CONTEXT: OnceLock<GlobalRef> = OnceLock::new();
 
     fn with_env<T>(
         f: impl FnOnce(&mut jni::JNIEnv, &JObject) -> Result<T, String>,
@@ -638,14 +638,14 @@ mod android_fs {
         let vm = unsafe { JavaVM::from_raw(ctx.vm() as *mut jni::sys::JavaVM) }
             .map_err(|e| format!("取 JavaVM 失败: {}", e))?;
         let mut env = vm.attach_current_thread().map_err(|e| format!("attach 失败: {}", e))?;
-        if ACTIVITY.get().is_none() {
+        if APP_CONTEXT.get().is_none() {
             let local = unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
             let global = env
                 .new_global_ref(&local)
                 .map_err(|e| format!("转全局引用失败: {}", e))?;
-            let _ = ACTIVITY.set(global);
+            let _ = APP_CONTEXT.set(global);
         }
-        let act = ACTIVITY.get().ok_or_else(|| "取不到 Activity".to_string())?;
+        let act = APP_CONTEXT.get().ok_or_else(|| "取不到 Context".to_string())?;
         let out = f(&mut env, act.as_obj());
         // 有异常就把类型和消息带回去，别只留一句 "Java exception was thrown"
         if let Ok(true) = env.exception_check() {
@@ -665,10 +665,31 @@ mod android_fs {
         out
     }
 
+    /// 取 MainActivity 实例：ndk_context 只给 Application，要自己从静态字段拿
+    fn activity(env: &mut jni::JNIEnv) -> Result<JObject, String> {
+        let cls = env
+            .find_class("app/xvsvt/netease/export/MainActivity")
+            .map_err(|e| format!("找不到 MainActivity: {}", e))?;
+        let inst = env
+            .get_static_field(
+                cls,
+                "etaInstance",
+                "Lapp/xvsvt/netease/export/MainActivity;",
+            )
+            .map_err(|e| format!("读 etaInstance 失败: {}", e))?
+            .l()
+            .map_err(|e| e.to_string())?;
+        if inst.is_null() {
+            return Err("MainActivity 还没准备好，回到 App 再试一次".into());
+        }
+        Ok(inst)
+    }
+
     /// 拉起系统的「选择文件夹」界面（具体 Intent 组装在 MainActivity 里做）
     pub fn pick_dir() -> Result<(), String> {
-        with_env(|env, act| {
-            env.call_method(act, "etaPickFolder", "()V", &[])
+        with_env(|env, _ctx| {
+            let act = activity(env)?;
+            env.call_method(&act, "etaPickFolder", "()V", &[])
                 .map_err(|e| e.to_string())?;
             Ok(())
         })
