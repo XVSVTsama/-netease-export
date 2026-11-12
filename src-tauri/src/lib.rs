@@ -108,6 +108,105 @@ fn save_cookie(app: &tauri::AppHandle, cookie: &str) {
     }
 }
 
+/* ---------------- 人工补充的额外歌曲 ---------------- */
+
+fn extras_dir(app: &tauri::AppHandle, kind: &str) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("extras")
+        .join(kind);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn load_extras(app: &tauri::AppHandle, kind: &str, id: i64) -> Vec<Value> {
+    let dir = match extras_dir(app, kind) { Ok(d) => d, Err(_) => return Vec::new() };
+    fs::read_to_string(dir.join(format!("{}.json", id)))
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| v["items"].as_array().cloned())
+        .unwrap_or_default()
+}
+
+fn save_extras(app: &tauri::AppHandle, kind: &str, id: i64, items: &[Value]) -> Result<(), String> {
+    let dir = extras_dir(app, kind)?;
+    let payload = serde_json::json!({ "items": items });
+    fs::write(dir.join(format!("{}.json", id)), payload.to_string()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_extras(app: tauri::AppHandle, kind: String, id: i64) -> Value {
+    serde_json::json!({ "items": load_extras(&app, &kind, id) })
+}
+
+#[tauri::command]
+fn add_extra(
+    app: tauri::AppHandle,
+    kind: String,
+    id: i64,
+    name: String,
+    ar: String,
+    al: String,
+    company: String,
+) -> Result<Value, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() { return Err("歌名不能为空".into()); }
+    let mut items = load_extras(&app, &kind, id);
+    items.push(serde_json::json!({
+        "id": 0,
+        "name": name,
+        "ar": ar.trim(),
+        "al": al.trim(),
+        "company": company.trim(),
+        "alId": 0,
+        "dur": 0,
+        "ncr": false,
+        "fee": 0,
+        "pop": 0,
+        "alia": "",
+        "mv": 0,
+        "manual": true,
+    }));
+    save_extras(&app, &kind, id, &items)?;
+    Ok(serde_json::json!({ "ok": true, "items": items }))
+}
+
+#[tauri::command]
+fn remove_extra(app: tauri::AppHandle, kind: String, id: i64, index: usize) -> Result<Value, String> {
+    let mut items = load_extras(&app, &kind, id);
+    if index >= items.len() { return Err("没有这一条".into()); }
+    items.remove(index);
+    save_extras(&app, &kind, id, &items)?;
+    Ok(serde_json::json!({ "ok": true, "items": items }))
+}
+
+/// 下架 / 无版权 / 仅其他版本可播
+fn blocked_row(r: &Value) -> bool {
+    r["missing"].as_bool().unwrap_or(false)
+        || r["st"].as_i64() == Some(-200)
+        || r["pl"].as_i64() == Some(0)
+        || r["ncr"].as_bool().unwrap_or(false)
+}
+
+/// 合并曲目：按「歌名 + 歌手」去重，人工补充的排在后面
+fn merge_rows(base: &[Value], extra: &[Value]) -> Vec<Value> {
+    let key = |r: &Value| {
+        format!(
+            "{}|||{}",
+            r["name"].as_str().unwrap_or("").to_lowercase(),
+            r["ar"].as_str().unwrap_or("").to_lowercase()
+        )
+    };
+    let mut out: Vec<Value> = base.to_vec();
+    let mut seen: std::collections::HashSet<String> = base.iter().map(key).collect();
+    for r in extra {
+        if seen.insert(key(r)) { out.push(r.clone()); }
+    }
+    out
+}
+
 fn sanitize(name: &str) -> String {
     let s: String = name.chars()
         .map(|c| if "\\/:*?\"<>|".contains(c) || c.is_control() { '_' } else { c })
@@ -129,6 +228,7 @@ fn fmt_dur(ms: i64) -> String {
 
 /// 曲目状态的显示文本：优先看 privilege（st/pl），老数据回退到 ncr
 fn song_state(r: &Value) -> &'static str {
+    if r["manual"].as_bool().unwrap_or(false) { return "人工补充"; }
     if r["missing"].as_bool().unwrap_or(false) { return "已下架（详情不可获取）"; }
     match r["st"].as_i64() {
         Some(-200) => "已下架",
@@ -1079,24 +1179,53 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
     let mut all_rows: Vec<Value> = Vec::new();
     let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
     let mut public_files = 0usize;
+    let mut extras_total = 0i64;
 
     for (_, d) in read_stage(&dir) {
         let name = sanitize(d["name"].as_str().unwrap_or("未命名"));
-        let (csv_paths, _) = write_both(app, &format!("{}/{}.csv", sub, name), &to_csv(&d));
-        let (md_paths, _) = write_both(app, &format!("{}/{}.md", sub, name), &to_md(&d));
-        if csv_paths.is_empty() || md_paths.is_empty() { failed += 1; continue; }
-        public_files += csv_paths.iter().filter(|p| !p.contains("/exports/")).count();
-        public_files += md_paths.iter().filter(|p| !p.contains("/exports/")).count();
-        files += 2;
+        let raw_name = d["name"].as_str().unwrap_or("未命名");
+        let id = d["id"].as_i64().unwrap_or(0);
+        let rows: Vec<Value> = d["rows"].as_array().cloned().unwrap_or_default();
+        let extras = load_extras(app, kind, id);
+        extras_total += extras.len() as i64;
+
+        let blocked: Vec<Value> = rows.iter().filter(|r| blocked_row(*r)).cloned().collect();
+        let full = merge_rows(&rows, &extras);
+
+        let sets: [(&str, &str, Vec<Value>); 4] = [
+            ("", "完整歌单", full.clone()),
+            ("-网易云", "网易云现状", rows.clone()),
+            ("-受限", "受限曲目", blocked.clone()),
+            ("-补充", "人工补充", extras.clone()),
+        ];
+        let mut wrote = 0usize;
+        for (tag, label, list) in sets {
+            let payload = serde_json::json!({
+                "name": format!("{}（{}）", raw_name, label),
+                "id": id,
+                "count": list.len(),
+                "rows": list,
+            });
+            let (c, _) = write_both(app, &format!("{}/{}{}.csv", sub, name, tag), &to_csv(&payload));
+            let (m, _) = write_both(app, &format!("{}/{}{}.md", sub, name, tag), &to_md(&payload));
+            if c.is_empty() || m.is_empty() { continue; }
+            public_files += c.iter().filter(|p| !p.contains("/exports/")).count();
+            public_files += m.iter().filter(|p| !p.contains("/exports/")).count();
+            wrote += 2;
+        }
+        if wrote == 0 { failed += 1; continue; }
+        files += wrote;
         items += 1;
-        let count = d["count"].as_i64().unwrap_or(0);
-        songs += count;
-        index_rows.push(format!("| {} | {} | `{}/{}.md` |", name, count, sub, name));
+        songs += rows.len() as i64;
+        index_rows.push(format!(
+            "| {} | {} | {} | {}{} |",
+            name, rows.len(), blocked.len(), extras.len(),
+            if extras.is_empty() { "" } else { "（含人工补充）" }
+        ));
         if kind == "pl" {
-            if let Some(rows) = d["rows"].as_array() {
-                for r in rows {
-                    let id = r["id"].as_i64().unwrap_or(0);
-                    if id > 0 && seen.insert(id) { all_rows.push(r.clone()); }
+            for r in &full {
+                if let Some(rid) = r["id"].as_i64() {
+                    if rid > 0 && seen.insert(rid) { all_rows.push(r.clone()); }
                 }
             }
         }
@@ -1104,8 +1233,8 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
 
     if !index_rows.is_empty() {
         let idx = format!(
-            "# {}\n\n- 项数：{}\n- 曲目合计：{} 首\n- 生成时间：{}\n\n| 名称 | 曲目 | 文件 |\n| --- | --- | --- |\n{}\n",
-            sub, items, songs, now_human(), index_rows.join("\n")
+            "# {}\n\n- 项数：{}\n- 曲目合计：{} 首（人工补充 {} 首）\n- 生成时间：{}\n\n每个歌单四套文件：`名字.csv/md` 是完整歌单，`名字-网易云` 是当前状态，`名字-受限` 是下架/无版权/仅其他版本，`名字-补充` 是人工添加。\n\n| 名称 | 曲目 | 受限 | 人工补充 | 文件 |\n| --- | --- | --- | --- | --- |\n{}\n",
+            sub, items, songs, extras_total, now_human(), index_rows.join("\n")
         );
         let (p, _) = write_both(app, &format!("{}/00_索引.md", sub), &idx);
         public_files += p.iter().filter(|x| !x.contains("/exports/")).count();
@@ -1123,7 +1252,7 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
 
     Ok(serde_json::json!({
         "ok": true, "items": items, "files": files, "songs": songs, "unique": unique,
-        "failed": failed, "publicFiles": public_files, "sub": sub
+        "extras": extras_total, "failed": failed, "publicFiles": public_files, "sub": sub
     }))
 }
 
@@ -1150,13 +1279,18 @@ async fn do_check(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
         match fs::read_to_string(out.join(format!("{}.csv", name))) {
             Ok(t) => {
                 rows = (t.lines().count() as i64) - 1;
-                if rows != count { issues.push(format!("CSV 行数 {} ≠ 曲目 {}", rows, count)); }
+                if rows < count { issues.push(format!("完整歌单只有 {} 行，少于曲目 {}", rows, count)); }
                 if !t.contains("发行公司/厂牌") { issues.push("CSV 缺厂牌列".to_string()); }
             }
-            Err(_) => issues.push("缺少 CSV".to_string()),
+            Err(_) => issues.push("缺少完整歌单 CSV".to_string()),
         }
-        if fs::read_to_string(out.join(format!("{}.md", name))).is_err() {
-            issues.push("缺少 MD".to_string());
+        for tag in ["", "-网易云", "-受限", "-补充"] {
+            if fs::read_to_string(out.join(format!("{}{}.csv", name, tag))).is_err() {
+                issues.push(format!("缺少 {}{}.csv", name, tag));
+            }
+            if fs::read_to_string(out.join(format!("{}{}.md", name, tag))).is_err() {
+                issues.push(format!("缺少 {}{}.md", name, tag));
+            }
         }
         let good = issues.is_empty();
         if good { ok_count += 1; } else { bad_count += 1; }
@@ -1501,6 +1635,7 @@ pub fn run() {
             stage_one, stage_stats, stage_ids, fill_companies, tidy, check_exports,
             job_start, job_status, job_stop, copy_log,
             get_export_dir, set_export_dir, check_export_dir, app_version, open_storage_settings,
+            list_extras, add_extra, remove_extra,
             pick_export_dir, take_picked_dir
         ])
         .run(tauri::generate_context!())

@@ -249,6 +249,19 @@
       <div class="tracks" id="dList"><div class="empty">加载中…</div></div>
       <div class="hint" id="dState"></div>
     </section>
+
+    <section class="section">
+      <h2 id="exTitle">额外歌曲<span class="count" id="exCount"></span></h2>
+      <input type="text" id="exName" placeholder="歌名（必填）" autocomplete="off">
+      <input type="text" id="exAr" placeholder="歌手" autocomplete="off" style="margin-top:8px">
+      <input type="text" id="exAl" placeholder="专辑" autocomplete="off" style="margin-top:8px">
+      <input type="text" id="exCompany" placeholder="厂牌（可留空）" autocomplete="off" style="margin-top:8px">
+      <div class="actions" style="margin-top:10px;grid-template-columns:1fr">
+        <button class="btn primary" id="btnExAdd">添加额外歌曲</button>
+      </div>
+      <div class="list" id="exList" style="margin-top:10px"><div class="empty">还没有额外歌曲</div></div>
+      <div class="hint" id="exState"></div>
+    </section>
   </div>
 </main>
 
@@ -574,6 +587,37 @@ $('btnLog').onclick = async () => {
 };
 
 /* ---------- 详情 ---------- */
+async function loadExtras() {
+  if (!detailId) return;
+  $('exTitle').innerHTML = (detailKind === 'pl' ? '额外歌曲（这个歌单）' : '额外歌曲（这张专辑）') +
+    '<span class="count" id="exCount"></span>';
+  try {
+    const r = await inv('list_extras', { kind: detailKind, id: detailId });
+    renderExtras(r.items || []);
+  } catch (e) { setHint('exState', '加载失败：' + e); }
+}
+
+function renderExtras(items) {
+  const cnt = $('exCount');
+  if (cnt) cnt.textContent = items.length ? items.length + ' 首' : '';
+  $('exList').innerHTML = items.length
+    ? items.map((it, i) => '<div class="track"><span class="idx">' + (i + 1) + '</span>' +
+        '<div class="body"><div class="title">' + esc(it.name) + '</div>' +
+        '<div class="meta">' + [it.ar, it.al, it.company].filter(Boolean).map(esc).join(' · ') + '</div></div>' +
+        '<button class="btn small" data-ex="' + i + '">删除</button></div>').join('')
+    : '<div class="empty">还没有额外歌曲</div>';
+  const btns = document.querySelectorAll('#exList [data-ex]');
+  btns.forEach(b => { b.onclick = () => removeExtra(+b.dataset.ex); });
+}
+
+async function removeExtra(i) {
+  try {
+    const r = await inv('remove_extra', { kind: detailKind, id: detailId, index: i });
+    renderExtras(r.items || []);
+    setHint('exState', '已删除');
+  } catch (e) { setHint('exState', '删除失败：' + e); }
+}
+
 async function openDetail(kind, id) {
   detailKind = kind; detailId = id; detailRows = []; detailPage = 0;
   $('dTitle').textContent = '加载中…';
@@ -581,6 +625,7 @@ async function openDetail(kind, id) {
   $('dList').innerHTML = '<div class="empty">正在拉取曲目…（曲目多时需要一会儿）</div>';
   $('dState').textContent = '';
   showView('detail');
+  loadExtras();
   try {
     const d = kind === 'pl' ? await inv('playlist_detail', { id }) : await inv('album_detail', { id });
     detailRows = d.rows || [];
@@ -630,6 +675,20 @@ function renderDetail() {
   const more = $('dMore');
   if (more) more.onclick = () => { detailPage++; renderDetail(); };
 }
+
+$('btnExAdd').onclick = async () => {
+  const name = $('exName').value.trim();
+  if (!name) { setHint('exState', '先填歌名'); return; }
+  try {
+    const r = await inv('add_extra', {
+      kind: detailKind, id: detailId, name,
+      ar: $('exAr').value.trim(), al: $('exAl').value.trim(), company: $('exCompany').value.trim(),
+    });
+    renderExtras(r.items || []);
+    $('exName').value = ''; $('exAr').value = ''; $('exAl').value = ''; $('exCompany').value = '';
+    setHint('exState', '已添加，整理导出后会进「完整歌单」和「-补充」两套文件');
+  } catch (e) { setHint('exState', '添加失败：' + e); }
+};
 
 $('btnBack').onclick = () => showView(detailKind === 'al' ? 'albums' : 'browse');
 
