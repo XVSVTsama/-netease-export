@@ -723,7 +723,7 @@ const KIND_NAME = { pl: '我创建的歌单', plfav: '收藏歌单', al: '收藏
 const PHASE = { sync: '同步', tidy: '补厂牌', 'tidy-doc': '生成文档', check: '核验', done: '完成' };
 const RUN_BTNS = { pl: 'btnRunPl', plfav: 'btnRunFav', al: 'btnRunAl' };
 const FILL_BTNS = { pl: 'btnFillPl', plfav: 'btnFillFav', al: 'btnFillAl' };
-let JOB = null, JOB_KIND = '', pollTimer2 = null, LOGLEN = -1;
+let JOB = null, JOB_KIND = '', pollTimer2 = null, LOGTAIL = '';
 
 function fmtSec(sec) {
   const t = Math.max(0, Math.round(sec));
@@ -756,9 +756,12 @@ function scopeList(kind) {
 }
 
 function renderLogs(logs) {
-  if (!logs) return;
-  if (logs.length === LOGLEN) return;
-  LOGLEN = logs.length;
+  if (!logs || !logs.length) return;
+  // 后端每次最多给 160 条，超过之后长度就不再变化，只能靠最后一条判断有没有新日志
+  const last = logs[logs.length - 1];
+  const sig = (last.ts || '') + '|' + (last.t || '');
+  if (sig === LOGTAIL) return;
+  LOGTAIL = sig;
   const box = $('jobLog');
   box.innerHTML = logs.map(l => '<div class="lg k-' + l.k + '">' +
     (l.ts ? '<span class="ts">' + esc(l.ts) + '</span>' : '') + esc(l.t) + '</div>').join('');
@@ -847,7 +850,7 @@ async function runScope(kind, withFill) {
   const ids = all.filter(p => !synced.has(p.id)).map(p => p.id);
 
   JOB_KIND = kind;
-  LOGLEN = -1;
+  LOGTAIL = '';
   scrollToTask();
   const runIds = withFill ? [] : ids;
   setBatch(withFill ? '补厂牌（联网，可中途停止）'
