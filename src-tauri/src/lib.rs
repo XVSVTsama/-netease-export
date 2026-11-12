@@ -720,12 +720,15 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
     let mut index_rows: Vec<String> = Vec::new();
     let mut all_rows: Vec<Value> = Vec::new();
     let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    let mut public_files = 0usize;
 
     for (_, d) in read_stage(&dir) {
         let name = sanitize(d["name"].as_str().unwrap_or("未命名"));
         let (csv_paths, _) = write_both(app, &format!("{}/{}.csv", sub, name), &to_csv(&d));
         let (md_paths, _) = write_both(app, &format!("{}/{}.md", sub, name), &to_md(&d));
         if csv_paths.is_empty() || md_paths.is_empty() { failed += 1; continue; }
+        public_files += csv_paths.iter().filter(|p| p.contains("Download")).count();
+        public_files += md_paths.iter().filter(|p| p.contains("Download")).count();
         files += 2;
         items += 1;
         let count = d["count"].as_i64().unwrap_or(0);
@@ -747,6 +750,7 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
             sub, items, songs, now_human(), index_rows.join("\n")
         );
         let (p, _) = write_both(app, &format!("{}/00_索引.md", sub), &idx);
+        public_files += p.iter().filter(|x| x.contains("Download")).count();
         if !p.is_empty() { files += 1; }
     }
 
@@ -755,12 +759,13 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
         unique = all_rows.len() as i64;
         let d = serde_json::json!({ "name": "全部曲目", "id": 0, "count": unique, "rows": all_rows });
         let (p, _) = write_both(app, "表格/all_songs.csv", &to_csv(&d));
+        public_files += p.iter().filter(|x| x.contains("Download")).count();
         if !p.is_empty() { files += 1; }
     }
 
     Ok(serde_json::json!({
         "ok": true, "items": items, "files": files, "songs": songs, "unique": unique,
-        "failed": failed, "sub": sub
+        "failed": failed, "publicFiles": public_files, "sub": sub
     }))
 }
 
@@ -987,6 +992,9 @@ async fn run_job(
                 job.log("ok", format!(
                     "整理完成：{} 项 · {} 个文件 · {} 首（去重 {}）· 用时 {:.1}s",
                     v["items"], v["files"], v["songs"], v["unique"], t0.elapsed().as_secs_f64()));
+                if v["publicFiles"].as_u64().unwrap_or(0) == 0 {
+                    job.log("warn", "文件只写进了应用私有目录：到系统设置给本应用「所有文件访问权限」后，才会出现在 Download/网易云导出");
+                }
             }
             Err(e) => job.log("err", format!("整理失败：{}", e)),
         }

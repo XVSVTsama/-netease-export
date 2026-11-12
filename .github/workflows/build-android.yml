@@ -43,6 +43,14 @@ jobs:
       - name: 初始化 Android 工程
         run: npx tauri android init --ci
 
+      - name: 声明「所有文件访问权限」（导出到 Download 需要）
+        run: |
+          MAN=src-tauri/gen/android/app/src/main/AndroidManifest.xml
+          if ! grep -q MANAGE_EXTERNAL_STORAGE "$MAN"; then
+            sed -i 's|<application|<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />\n    <application|' "$MAN"
+          fi
+          grep -n "MANAGE_EXTERNAL_STORAGE" "$MAN"
+
       - name: 写入版本号（覆盖安装需要递增 versionCode）
         run: |
           VERSION=$(node -p "require('./package.json').version")
