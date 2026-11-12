@@ -666,7 +666,7 @@ mod android_fs {
     }
 
     /// 取 MainActivity 实例：ndk_context 只给 Application，要自己从静态字段拿
-    fn activity(env: &mut jni::JNIEnv) -> Result<JObject, String> {
+    fn activity<'a>(env: &mut jni::JNIEnv<'a>) -> Result<JObject<'a>, String> {
         let cls = env
             .find_class("app/xvsvt/netease/export/MainActivity")
             .map_err(|e| format!("找不到 MainActivity: {}", e))?;
