@@ -98,6 +98,22 @@ jobs:
           PY
           grep -n "picked_dir" "$MA"
 
+      - name: 保留 MainActivity 的目录选择方法（防 R8 删掉）
+        run: |
+          PRO=src-tauri/gen/android/app/proguard-rules.pro
+          mkdir -p "$(dirname "$PRO")"
+          touch "$PRO"
+          if ! grep -q etaPickFolder "$PRO"; then
+            printf '%s\n' \
+              '-keep class app.xvsvt.netease.export.MainActivity { *; }' \
+              '-keepclassmembers class app.xvsvt.netease.export.MainActivity { *; }' >> "$PRO"
+          fi
+          cat "$PRO"
+          GRADLE=src-tauri/gen/android/app/build.gradle.kts
+          grep -n "isMinifyEnabled" "$GRADLE" || true
+          sed -i -E 's/isMinifyEnabled = true/isMinifyEnabled = false/g' "$GRADLE"
+          grep -n "isMinifyEnabled" "$GRADLE" || true
+
       - name: 写入版本号（覆盖安装需要递增 versionCode）
         run: |
           VERSION=$(node -p "require('./package.json').version")
