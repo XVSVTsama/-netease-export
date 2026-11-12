@@ -201,7 +201,7 @@
       <div class="hint">
         导出文件写入 <code>/sdcard/Download/网易云导出</code>，同时在应用私有目录留一份。<br>
         本应用只导出公开的歌单信息与曲目元数据，不播放、不下载音频，也不绕过任何付费或版权限制。<br>
-        版本 <span id="ver">1.4.0</span>
+        版本 <span id="ver">1.4.1</span>
       </div>
     </section>
   </div>
@@ -333,8 +333,10 @@ function renderHomeStats() {
       statHtml('歌曲', songs, '去重前合计')
     : statHtml('歌单', '—', '刷新后显示');
   $('favMeta').textContent = fav.length ? '收藏歌单 ' + fav.length + ' 个' : '';
+  const favSongs = fav.reduce((s, p) => s + (p.count || 0), 0);
   $('favStats').innerHTML = statHtml('收藏歌单', fav.length, '含订阅') +
-    statHtml('收藏专辑', ALBUMS.length || '—', ALBUMS.length ? (ALBUMS.reduce((s, a) => s + (a.size || 0), 0) + ' 首') : '点「加载」');
+    statHtml('收藏专辑', ALBUMS.length || '—', ALBUMS.length ? (ALBUMS.reduce((s, a) => s + (a.size || 0), 0) + ' 首') : '点「加载」') +
+    statHtml('收藏曲目', PLAYLISTS.length ? favSongs : '—', '收藏歌单合计');
   $('favMeta2').textContent = fav.length ? '共 ' + fav.length + ' 个' : '';
 }
 
