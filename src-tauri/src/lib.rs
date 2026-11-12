@@ -183,10 +183,11 @@ fn remove_extra(app: tauri::AppHandle, kind: String, id: i64, index: usize) -> R
 }
 
 /// 下架 / 无版权 / 仅其他版本可播
-fn blocked_row(r: &Value) -> bool {
+/// 专辑接口不返回 privilege，也就没有无版权信息，按调用方要求可以跳过这一条
+fn blocked_row(r: &Value, include_no_copyright: bool) -> bool {
     r["missing"].as_bool().unwrap_or(false)
         || r["st"].as_i64() == Some(-200)
-        || r["pl"].as_i64() == Some(0)
+        || (include_no_copyright && r["pl"].as_i64() == Some(0))
         || r["ncr"].as_bool().unwrap_or(false)
 }
 
@@ -1189,7 +1190,9 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
         let extras = load_extras(app, kind, id);
         extras_total += extras.len() as i64;
 
-        let blocked: Vec<Value> = rows.iter().filter(|r| blocked_row(*r)).cloned().collect();
+        let judge_nc = kind == "pl";
+        let blocked: Vec<Value> =
+            rows.iter().filter(|r| blocked_row(*r, judge_nc)).cloned().collect();
         let full = merge_rows(&rows, &extras);
 
         let sets: [(&str, &str, Vec<Value>); 4] = [
