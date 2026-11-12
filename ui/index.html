@@ -682,6 +682,36 @@ $('btnExAdd').onclick = async () => {
 
 $('btnBack').onclick = () => showView(detailKind === 'al' ? 'albums' : 'browse');
 
+/* ---------- 左右滑动切换页面 ---------- */
+const SWIPE_VIEWS = ['home', 'browse', 'albums', 'docs', 'setting'];
+let swX = 0, swY = 0, swOn = false;
+if (typeof document.addEventListener === 'function') {
+  document.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { swOn = false; return; }
+    const t = e.touches[0];
+    swX = t.clientX; swY = t.clientY;
+    // 横向滚动条、输入框、内部滚动区自己处理手势
+    swOn = !(e.target.closest && e.target.closest('.accs, .modes, input, textarea, .tracks, .job-log'));
+  }, { passive: true });
+
+  document.addEventListener('touchend', e => {
+    if (!swOn) return;
+    swOn = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - swX, dy = t.clientY - swY;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+
+    if (currentView === 'detail') {
+      if (dx > 0) showView(detailKind === 'al' ? 'albums' : 'browse');
+      return;
+    }
+    const i = SWIPE_VIEWS.indexOf(currentView);
+    if (i < 0) return;
+    const ni = dx < 0 ? i + 1 : i - 1;
+    if (ni >= 0 && ni < SWIPE_VIEWS.length) showView(SWIPE_VIEWS[ni]);
+  }, { passive: true });
+}
+
 async function exportDetail(format) {
   if (!detailId) return;
   $('dState').textContent = '导出中…';
