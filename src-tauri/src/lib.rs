@@ -624,7 +624,7 @@ fn tree_uri_to_path(uri: &str) -> Option<String> {
 
 #[cfg(target_os = "android")]
 mod android_fs {
-    use jni::objects::{GlobalRef, JObject, JString, JValue};
+    use jni::objects::{GlobalRef, JClass, JObject, JString, JValue};
     use jni::JavaVM;
     use std::sync::OnceLock;
 
@@ -693,6 +693,7 @@ mod android_fs {
             .map_err(|e| format!("找不到 MainActivity: {}", e))?
             .l()
             .map_err(|e| e.to_string())?;
+        let cls = JClass::from(cls);
         let inst = env
             .get_static_field(
                 &cls,
