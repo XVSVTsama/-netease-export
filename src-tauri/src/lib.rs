@@ -652,11 +652,13 @@ mod android_fs {
             let thrown = env.exception_occurred().ok();
             let _ = env.exception_clear();
             let desc = thrown.and_then(|t| {
-                env.call_method(&t, "toString", "()Ljava/lang/String;", &[])
-                    .ok()
-                    .and_then(|v| v.l().ok())
-                    .and_then(|o| env.get_string(&JString::from(o)).ok())
-                    .map(|x| x.to_string_lossy().to_string())
+                let v = env
+                    .call_method(&t, "toString", "()Ljava/lang/String;", &[])
+                    .ok()?;
+                let o = v.l().ok()?;
+                let js = JString::from(o);
+                let s = env.get_string(&js).ok()?;
+                Some(s.to_string_lossy().to_string())
             });
             return Err(format!("Java 异常：{}", desc.unwrap_or_else(|| "未知".into())));
         }

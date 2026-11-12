@@ -207,7 +207,7 @@ pub async fn playlist_detail(c: &Client, id: i64, with_company: bool) -> Result<
         return Err(format!("拉取歌单失败: {}", r["message"].as_str().unwrap_or("未知")));
     }
     let pl = &r["playlist"];
-    let mut songs: Vec<Value> = pl["tracks"].as_array().cloned().unwrap_or_default();
+    let songs: Vec<Value> = pl["tracks"].as_array().cloned().unwrap_or_default();
     let ids: Vec<i64> = pl["trackIds"].as_array()
         .map(|a| a.iter().filter_map(|x| x["id"].as_i64()).collect())
         .unwrap_or_default();
