@@ -191,6 +191,73 @@ fn blocked_row(r: &Value, include_no_copyright: bool) -> bool {
         || r["ncr"].as_bool().unwrap_or(false)
 }
 
+/* ---------------- 已下架曲目档案 ---------------- */
+
+fn archive_path(app: &tauri::AppHandle, kind: &str, id: i64) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("archive")
+        .join(kind);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join(format!("{}.json", id)))
+}
+
+fn load_archive(app: &tauri::AppHandle, kind: &str, id: i64) -> Vec<Value> {
+    let p = match archive_path(app, kind, id) { Ok(p) => p, Err(_) => return Vec::new() };
+    fs::read_to_string(p)
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| v["items"].as_array().cloned())
+        .unwrap_or_default()
+}
+
+fn save_archive(app: &tauri::AppHandle, kind: &str, id: i64, items: &[Value]) -> Result<(), String> {
+    let p = archive_path(app, kind, id)?;
+    let payload = serde_json::json!({ "items": items });
+    fs::write(p, payload.to_string()).map_err(|e| e.to_string())
+}
+
+/// 把这一份数据里"下架 / 无版权 / 仅其他版本"的曲目记进档案，按歌曲 ID 去重
+fn archive_add(app: &tauri::AppHandle, kind: &str, id: i64, d: &Value) {
+    let mut items = load_archive(app, kind, id);
+    let mut seen: std::collections::HashSet<i64> =
+        items.iter().filter_map(|r| r["id"].as_i64()).collect();
+    if let Some(rows) = d["rows"].as_array() {
+        for r in rows {
+            if !blocked_row(r, true) { continue; }
+            let rid = r["id"].as_i64().unwrap_or(0);
+            if rid <= 0 || !seen.insert(rid) { continue; }
+            items.push(r.clone());
+        }
+    }
+    let _ = save_archive(app, kind, id, &items);
+}
+
+/// 档案里有、但这次接口没返回的曲目补回 rows，标记 archived
+fn merge_archive(app: &tauri::AppHandle, kind: &str, id: i64, mut d: Value) -> Value {
+    let items = load_archive(app, kind, id);
+    if items.is_empty() { return d; }
+    let mut rows = d["rows"].as_array().cloned().unwrap_or_default();
+    let mut have: std::collections::HashSet<i64> =
+        rows.iter().filter_map(|r| r["id"].as_i64()).collect();
+    let mut added = 0usize;
+    for it in items {
+        let rid = it["id"].as_i64().unwrap_or(0);
+        if rid <= 0 || !have.insert(rid) { continue; }
+        let mut row = it.clone();
+        row["archived"] = serde_json::json!(true);
+        rows.push(row);
+        added += 1;
+    }
+    if added > 0 {
+        d["count"] = serde_json::json!(rows.len());
+        d["rows"] = serde_json::json!(rows);
+    }
+    d
+}
+
 /// 合并曲目：按「歌名 + 歌手」去重，人工补充的排在后面
 fn merge_rows(base: &[Value], extra: &[Value]) -> Vec<Value> {
     let key = |r: &Value| {
@@ -1064,13 +1131,22 @@ fn read_stage(dir: &std::path::Path) -> Vec<(PathBuf, Value)> {
 /// 抓一个歌单 / 收藏歌单 / 收藏专辑的详情进暂存区（不生成文档）
 async fn do_stage(app: &tauri::AppHandle, client: &Client, kind: &str, id: i64) -> Result<(String, i64, Value), String> {
     if kind_sub(kind).is_none() { return Err("未知类型".into()); }
+    let dir = stage_dir(app, kind)?;
+    let path = dir.join(format!("{}.json", id));
+    // 覆盖之前先把旧数据里的受限曲目记进档案，别让重新同步把它们冲掉
+    if let Ok(t) = fs::read_to_string(&path) {
+        if let Ok(old) = serde_json::from_str::<Value>(&t) {
+            archive_add(app, kind, id, &old);
+        }
+    }
     let d = if kind == "al" {
         api::album_detail(client, id).await?
     } else {
         api::playlist_detail(client, id, false).await?
     };
-    let dir = stage_dir(app, kind)?;
-    fs::write(dir.join(format!("{}.json", id)), d.to_string()).map_err(|e| e.to_string())?;
+    archive_add(app, kind, id, &d);
+    let d = merge_archive(app, kind, id, d);
+    fs::write(&path, d.to_string()).map_err(|e| e.to_string())?;
     Ok((
         d["name"].as_str().unwrap_or("").to_string(),
         d["count"].as_i64().unwrap_or(0),
@@ -1183,7 +1259,9 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
     let mut extras_total = 0i64;
     let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    for (_, d) in read_stage(&dir) {
+    for (_, raw) in read_stage(&dir) {
+        let raw_id = raw["id"].as_i64().unwrap_or(0);
+        let d = merge_archive(app, kind, raw_id, raw);
         let raw_name = d["name"].as_str().unwrap_or("未命名");
         // 清洗后的名字可能撞车（控制符都成了 _，或截断到 50 字），撞了就加序号，别互相覆盖
         let mut name = sanitize(raw_name);
