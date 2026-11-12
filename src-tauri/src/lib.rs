@@ -294,6 +294,15 @@ fn fmt_dur(ms: i64) -> String {
     format!("{}:{:02}", total / 60, total % 60)
 }
 
+/// 不可播放的具体原因，可播放时返回空串
+fn block_reason(r: &Value) -> &'static str {
+    if r["missing"].as_bool().unwrap_or(false) { return "详情缺失"; }
+    if r["st"].as_i64() == Some(-200) { return "已下架"; }
+    if r["pl"].as_i64() == Some(0) { return "无版权"; }
+    if r["ncr"].as_bool().unwrap_or(false) { return "仅其他版本可播"; }
+    ""
+}
+
 /// 曲目状态的显示文本：优先看 privilege（st/pl），老数据回退到 ncr
 fn song_state(r: &Value) -> &'static str {
     if r["manual"].as_bool().unwrap_or(false) { return "人工补充"; }
@@ -384,7 +393,7 @@ fn apply_cached_companies(app: &tauri::AppHandle, kind: &str) -> usize {
 }
 
 fn to_csv(d: &Value) -> String {
-    let mut out = String::from("\u{feff}序号,歌名,制作人/团体,专辑,发行公司/厂牌,时长,时长秒,歌曲ID,专辑ID,流行度,MV_ID,别名,权限,可播放,状态\n");
+    let mut out = String::from("\u{feff}序号,歌名,制作人/团体,专辑,发行公司/厂牌,时长,时长秒,歌曲ID,专辑ID,流行度,MV_ID,别名,权限,不可播放原因,状态\n");
     if let Some(rows) = d["rows"].as_array() {
         for (i, r) in rows.iter().enumerate() {
             let e = |v: &Value| format!("\"{}\"", v.as_str().unwrap_or("").replace('"', "\"\""));
@@ -407,7 +416,7 @@ fn to_csv(d: &Value) -> String {
                 r["mv"].as_i64().unwrap_or(0),
                 e(&r["alia"]),
                 perm,
-                if blocked_row(r, true) { "不可播放" } else { "可播放" },
+                block_reason(r),
                 song_state(r)
             ));
         }
