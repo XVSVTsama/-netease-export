@@ -593,12 +593,17 @@ function renderDetail() {
   if (!detailRows.length) { $('dList').innerHTML = '<div class="empty">没有曲目</div>'; return; }
   const shown = detailRows.slice(0, (detailPage + 1) * PAGE);
   let html = shown.map((r, i) => {
-    const flag = r.ncr ? '<span class="tag">仅其他版本</span>' : '';
+    const stText = r.missing ? '已下架'
+      : r.st === -200 ? '已下架'
+      : (typeof r.st === 'number' && r.pl === 0) ? '无版权'
+      : r.ncr ? '仅其他版本' : '';
+    const flag = stText ? '<span class="tag">' + stText + '</span>' : '';
+    const title = r.name || (r.missing ? '（已下架·名称不可获取）' : '（未知）');
     const cmp = r.company || (r.cstate === 'none' ? '未标注厂牌'
       : r.cstate === 'fail' ? '厂牌查询失败' : '厂牌未查询');
     const meta = [r.ar, r.al, cmp].filter(Boolean).map(esc).join(' · ');
     return '<div class="track"><span class="idx">' + (i + 1) + '</span><div class="body">' +
-      '<div class="title">' + esc(disp(r.name)) + flag + '</div><div class="meta">' + meta + '</div></div>' +
+      '<div class="title">' + esc(disp(title)) + flag + '</div><div class="meta">' + meta + '</div></div>' +
       '<span class="tail">' + fmtDur(r.dur) + '</span></div>';
   }).join('');
   if (detailRows.length > shown.length) {
@@ -921,7 +926,7 @@ $('btnSpecialList').onclick = async () => {
     const items = r.items || [];
     $('specialList').innerHTML = items.length
       ? items.slice(0, 500).map((it, i) => {
-        const kinds = (it.kinds || []).map(k => ({ otherVersion: '其他版本', special: '特殊字符', nonLatin: '非拉丁' }[k] || k)).join(' / ');
+        const kinds = (it.kinds || []).map(k => ({ down: '已下架', otherVersion: '其他版本', special: '特殊字符', nonLatin: '非拉丁' }[k] || k)).join(' / ');
         return '<div class="track"><span class="idx">' + (i + 1) + '</span><div class="body">' +
           '<div class="title">' + esc(disp(it.name)) + '</div>' +
           '<div class="meta">' + esc(it.ar) + ' · ' + esc(it.al) + ' · ' + esc(it.company || '未标注厂牌') + ' · ' + esc(kinds) + '</div></div></div>';

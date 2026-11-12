@@ -212,33 +212,63 @@ pub async fn playlist_detail(c: &Client, id: i64, with_company: bool) -> Result<
         .map(|a| a.iter().filter_map(|x| x["id"].as_i64()).collect())
         .unwrap_or_default();
 
-    if ids.len() > songs.len() {
-        let mut got: HashMap<i64, Value> = songs.iter().filter_map(|s| s["id"].as_i64().map(|i| (i, s.clone()))).collect();
+    // 可播放状态：privilege.st = -200 是已下架，pl = 0 是没有版权
+    let mut privs: HashMap<i64, (i64, i64)> = r["privileges"].as_array()
+        .map(|a| a.iter().filter_map(|p| p["id"].as_i64().map(|i| {
+            (i, (p["st"].as_i64().unwrap_or(0), p["pl"].as_i64().unwrap_or(1)))
+        })).collect())
+        .unwrap_or_default();
+
+    let mut got: HashMap<i64, Value> = songs.iter()
+        .filter_map(|s| s["id"].as_i64().map(|i| (i, s.clone()))).collect();
+    if ids.len() > got.len() {
         for chunk in ids.chunks(400) {
+            if got.len() >= ids.len() { break; }
             let cjson: Vec<Value> = chunk.iter().map(|x| json!({ "id": x })).collect();
             if let Ok(sr) = c.weapi("/weapi/v3/song/detail", json!({ "c": serde_json::to_string(&cjson).unwrap_or_default() })).await {
                 if let Some(arr) = sr["songs"].as_array() {
                     for s in arr { if let Some(i) = s["id"].as_i64() { got.insert(i, s.clone()); } }
                 }
+                // 歌单详情只带前 1000 条的 privilege，补齐的这批要自己收
+                if let Some(arr) = sr["privileges"].as_array() {
+                    for p in arr {
+                        if let Some(i) = p["id"].as_i64() {
+                            privs.insert(i, (p["st"].as_i64().unwrap_or(0), p["pl"].as_i64().unwrap_or(1)));
+                        }
+                    }
+                }
             }
         }
-        songs = ids.iter().filter_map(|i| got.get(i).cloned()).collect();
     }
+    let order: Vec<i64> = if ids.is_empty() {
+        songs.iter().filter_map(|s| s["id"].as_i64()).collect()
+    } else { ids.clone() };
 
     let mut rows = Vec::new();
     let mut album_ids: Vec<i64> = Vec::new();
-    for s in &songs {
-        let (name, ar, al, al_id, dur, ncr) = song_of_album(s);
-        if al_id > 0 && !album_ids.contains(&al_id) { album_ids.push(al_id); }
-        rows.push(json!({
-            "id": s["id"].as_i64().unwrap_or(0),
-            "name": name, "ar": ar, "al": al, "alId": al_id, "dur": dur,
-            "ncr": ncr == 1, "company": "",
-            "pop": s["pop"].as_i64().unwrap_or(0),
-            "alia": s["alia"].as_array().map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" / ")).unwrap_or_default(),
-            "mv": s["mv"].as_i64().unwrap_or(0),
-            "fee": s["fee"].as_i64().unwrap_or(0),
-        }));
+    for sid in order {
+        let (st, pl) = privs.get(&sid).copied().unwrap_or((0, 1));
+        if let Some(s) = got.get(&sid) {
+            let (name, ar, al, al_id, dur, ncr) = song_of_album(s);
+            if al_id > 0 && !album_ids.contains(&al_id) { album_ids.push(al_id); }
+            rows.push(json!({
+                "id": sid,
+                "name": name, "ar": ar, "al": al, "alId": al_id, "dur": dur,
+                "ncr": ncr == 1, "company": "",
+                "pop": s["pop"].as_i64().unwrap_or(0),
+                "alia": s["alia"].as_array().map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" / ")).unwrap_or_default(),
+                "mv": s["mv"].as_i64().unwrap_or(0),
+                "fee": s["fee"].as_i64().unwrap_or(0),
+                "st": st, "pl": pl, "missing": false,
+            }));
+        } else {
+            // 下架/无版权的歌接口不再返回详情，保留一行占位，导出时标成已下架
+            rows.push(json!({
+                "id": sid, "name": "", "ar": "", "al": "", "alId": 0, "dur": 0,
+                "ncr": true, "company": "", "pop": 0, "alia": "", "mv": 0, "fee": 0,
+                "st": if st == 0 { -200 } else { st }, "pl": 0, "missing": true,
+            }));
+        }
     }
 
     // 厂牌：先用缓存；同步阶段不查（with_company = false），整理阶段再分批补齐
@@ -275,6 +305,15 @@ pub async fn playlist_detail(c: &Client, id: i64, with_company: bool) -> Result<
 
 /* ---------------- 专项分类 ---------------- */
 
+/// 是否不可播放：详情缺失 / st=-200（已下架）/ pl=0（无版权）
+fn unplayable(r: &Value) -> bool {
+    if r["missing"].as_bool().unwrap_or(false) { return true; }
+    match r["st"].as_i64() {
+        Some(st) => st == -200 || r["pl"].as_i64() == Some(0),
+        None => r["ncr"].as_bool().unwrap_or(false) && r["fee"].as_i64().unwrap_or(0) == 0,
+    }
+}
+
 pub fn classify_items(rows: &[Value]) -> (Value, Vec<Value>) {
     use regex::Regex;
     let special_re = Regex::new(r"[\p{Mn}\p{Mc}\p{Cf}\p{So}\p{Co}]").unwrap();
@@ -282,7 +321,7 @@ pub fn classify_items(rows: &[Value]) -> (Value, Vec<Value>) {
     let (mut down, mut other_ver, mut special, mut nonlatin) = (0, 0, 0, 0);
     for r in rows {
         if r["ncr"].as_bool().unwrap_or(false) { other_ver += 1; }
-        if r["ncr"].as_bool().unwrap_or(false) && r["fee"].as_i64().unwrap_or(0) == 0 { down += 1; }
+        if unplayable(r) { down += 1; }
         let name = r["name"].as_str().unwrap_or("");
         if special_re.is_match(name) { special += 1; }
         if nonlatin_re.is_match(name) { nonlatin += 1; }
@@ -291,6 +330,7 @@ pub fn classify_items(rows: &[Value]) -> (Value, Vec<Value>) {
     for r in rows {
         let name = r["name"].as_str().unwrap_or("");
         let kinds: Vec<&str> = [
+            (unplayable(r), "down"),
             (r["ncr"].as_bool().unwrap_or(false), "otherVersion"),
             (special_re.is_match(name), "special"),
             (nonlatin_re.is_match(name), "nonLatin"),
@@ -302,6 +342,7 @@ pub fn classify_items(rows: &[Value]) -> (Value, Vec<Value>) {
             "ar": r["ar"].as_str().unwrap_or(""),
             "al": r["al"].as_str().unwrap_or(""),
             "company": r["company"].as_str().unwrap_or(""),
+            "missing": r["missing"].as_bool().unwrap_or(false),
             "kinds": kinds,
         }));
     }

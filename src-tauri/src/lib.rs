@@ -127,6 +127,17 @@ fn fmt_dur(ms: i64) -> String {
     format!("{}:{:02}", total / 60, total % 60)
 }
 
+/// 曲目状态的显示文本：优先看 privilege（st/pl），老数据回退到 ncr
+fn song_state(r: &Value) -> &'static str {
+    if r["missing"].as_bool().unwrap_or(false) { return "已下架（详情不可获取）"; }
+    match r["st"].as_i64() {
+        Some(-200) => "已下架",
+        Some(_) if r["pl"].as_i64() == Some(0) => "无版权",
+        Some(_) => if r["ncr"].as_bool().unwrap_or(false) { "仅其他版本可播" } else { "正常" },
+        None => if r["ncr"].as_bool().unwrap_or(false) { "仅其他版本可播" } else { "正常" },
+    }
+}
+
 /// 厂牌列的显示文本：区分「有厂牌 / 网易未标注 / 查询失败 / 还没查」
 fn company_text(r: &Value) -> &str {
     let c = r["company"].as_str().unwrap_or("");
@@ -209,12 +220,14 @@ fn to_csv(d: &Value) -> String {
     if let Some(rows) = d["rows"].as_array() {
         for (i, r) in rows.iter().enumerate() {
             let e = |v: &Value| format!("\"{}\"", v.as_str().unwrap_or("").replace('"', "\"\""));
+            let nm = r["name"].as_str().unwrap_or("");
+            let nm = if nm.is_empty() && r["missing"].as_bool().unwrap_or(false) { "（已下架·名称不可获取）" } else { nm };
             let fee = r["fee"].as_i64().unwrap_or(0);
             let perm = match fee { 0 => "免费", 1 => "VIP", 4 => "付费专辑", 8 => "低音质", _ => "其他" };
             out.push_str(&format!(
                 "{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
                 i + 1,
-                e(&r["name"]),
+                e(&serde_json::json!(nm)),
                 e(&r["ar"]),
                 e(&r["al"]),
                 format!("\"{}\"", company_text(r).replace('"', "\"\"")),
@@ -226,7 +239,7 @@ fn to_csv(d: &Value) -> String {
                 r["mv"].as_i64().unwrap_or(0),
                 e(&r["alia"]),
                 perm,
-                if r["ncr"].as_bool().unwrap_or(false) { "仅其他版本可播" } else { "正常" }
+                song_state(r)
             ));
         }
     }
@@ -240,10 +253,13 @@ fn to_md(d: &Value) -> String {
         now_human());
     if let Some(rows) = d["rows"].as_array() {
         for (i, r) in rows.iter().enumerate() {
-            let mark = if r["ncr"].as_bool().unwrap_or(false) { "  〔仅其他版本可播〕" } else { "" };
+            let state = song_state(r);
+            let mark = if state == "正常" { String::new() } else { format!("  〔{}〕", state) };
+            let nm = r["name"].as_str().unwrap_or("");
+            let nm = if nm.is_empty() && r["missing"].as_bool().unwrap_or(false) { "（已下架·名称不可获取）" } else { nm };
             out.push_str(&format!("{}. {} - {} - {} - {}  〔{}〕{}\n",
                 i + 1,
-                r["name"].as_str().unwrap_or(""),
+                nm,
                 r["ar"].as_str().unwrap_or("未知"),
                 r["al"].as_str().unwrap_or("未知"),
                 company_text(r),
