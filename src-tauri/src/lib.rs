@@ -818,7 +818,7 @@ async fn fill_all(app: &tauri::AppHandle, client: &Client, job: &Job, kind: &str
     job.ok.store(found.len(), Ordering::SeqCst);
     job.log("info", format!("补厂牌预检通过（{} 张）", probe_n));
 
-    const BATCH: usize = 30;
+    const BATCH: usize = 60;
     for (i, chunk) in need.chunks(BATCH).enumerate() {
         if job.stop.load(Ordering::SeqCst) { break; }
         let (got, failed_ids, err) = api::fill_companies(client, chunk).await;

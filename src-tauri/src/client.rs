@@ -1,12 +1,18 @@
 use crate::crypto;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// 相邻请求的最小间隔：网易风控对连续请求很敏感，太快会整批失败
 const MIN_GAP: Duration = Duration::from_millis(160);
 const RETRIES: usize = 2;
+
+/// 专辑接口（weapi）的放行间隔，毫秒。自适应：成功收紧，失败放宽
+const ALBUM_GAP_MIN: u64 = 40;
+const ALBUM_GAP_START: u64 = 60;
+const ALBUM_GAP_MAX: u64 = 800;
 
 const UA_WEB: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const UA_APP: &str = "NeteaseMusic/8.9.70.240407164325(8009070);Dalvik/2.1.0 (Linux; U; Android 13; PJZ110 Build/TP1A.220905.001)";
@@ -16,6 +22,7 @@ pub struct Client {
     http: reqwest::Client,
     cookies: Mutex<HashMap<String, String>>,
     gate: Mutex<Instant>,
+    album_gap: AtomicU64,
 }
 
 impl Client {
@@ -27,21 +34,33 @@ impl Client {
                 .expect("http client"),
             cookies: Mutex::new(HashMap::new()),
             gate: Mutex::new(Instant::now()),
+            album_gap: AtomicU64::new(ALBUM_GAP_START),
         }
     }
 
-    /// 全局限速：所有请求排队，保证相邻两次之间至少 MIN_GAP
-    async fn wait_gate(&self) {
+    /// 全局限速：所有请求排队，保证相邻两次之间至少 gap
+    async fn wait_gate(&self, gap: Duration) {
         let sleep_for = {
             let mut g = self.gate.lock().unwrap();
             let now = Instant::now();
-            let slot = if *g + MIN_GAP > now { *g + MIN_GAP } else { now };
+            let slot = if *g + gap > now { *g + gap } else { now };
             *g = slot;
             slot.saturating_duration_since(now)
         };
         if !sleep_for.is_zero() {
             tokio::time::sleep(sleep_for).await;
         }
+    }
+
+    /// 专辑接口自适应调速：成功逐步收紧，失败立刻放宽，避免整批被风控
+    fn tune_album_gap(&self, ok: bool) {
+        let cur = self.album_gap.load(Ordering::Relaxed);
+        let next = if ok {
+            cur.saturating_sub(4).max(ALBUM_GAP_MIN)
+        } else {
+            cur.saturating_mul(2).min(ALBUM_GAP_MAX)
+        };
+        self.album_gap.store(next, Ordering::Relaxed);
     }
 
     pub fn cookie_header(&self) -> String {
@@ -85,7 +104,8 @@ impl Client {
         let ck = self.cookie_header();
         let mut last_err = String::from("请求失败");
         for attempt in 0..=RETRIES {
-            self.wait_gate().await;
+            let gap = self.album_gap.load(Ordering::Relaxed);
+            self.wait_gate(Duration::from_millis(gap)).await;
             let mut req = self
                 .http
                 .post(format!("{}{}", API, path))
@@ -101,12 +121,17 @@ impl Client {
                     self.store_set_cookie(&resp);
                     let status = resp.status();
                     match resp.json::<Value>().await {
-                        Ok(v) => return Ok(v),
+                        Ok(v) => {
+                            let ok = v["code"].as_i64().unwrap_or(200) == 200;
+                            self.tune_album_gap(ok);
+                            return Ok(v);
+                        }
                         Err(e) => last_err = format!("HTTP {} 解析失败 {}", status.as_u16(), e),
                     }
                 }
                 Err(e) => last_err = e.to_string(),
             }
+            self.tune_album_gap(false);
             if attempt < RETRIES {
                 tokio::time::sleep(Duration::from_millis(700 * (attempt as u64 + 1))).await;
             }
@@ -130,7 +155,7 @@ impl Client {
         };
         let mut last_err = String::from("请求失败");
         for attempt in 0..=RETRIES {
-            self.wait_gate().await;
+            self.wait_gate(MIN_GAP).await;
             let send = self
                 .http
                 .post(format!("{}/eapi{}", API, short))
