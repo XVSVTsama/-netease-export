@@ -4,6 +4,7 @@ mod crypto;
 
 use client::Client;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
@@ -20,6 +21,8 @@ pub struct Job {
     step: Mutex<String>,
     total: AtomicUsize,
     done: AtomicUsize,
+    phase_total: AtomicUsize,
+    phase_done: AtomicUsize,
     ok: AtomicUsize,
     fail: AtomicUsize,
     songs: AtomicI64,
@@ -38,6 +41,8 @@ impl Job {
             step: Mutex::new(String::new()),
             total: AtomicUsize::new(0),
             done: AtomicUsize::new(0),
+            phase_total: AtomicUsize::new(0),
+            phase_done: AtomicUsize::new(0),
             ok: AtomicUsize::new(0),
             fail: AtomicUsize::new(0),
             songs: AtomicI64::new(0),
@@ -52,6 +57,8 @@ impl Job {
         self.stop.store(false, Ordering::SeqCst);
         self.total.store(total, Ordering::SeqCst);
         self.done.store(0, Ordering::SeqCst);
+        self.phase_total.store(0, Ordering::SeqCst);
+        self.phase_done.store(0, Ordering::SeqCst);
         self.ok.store(0, Ordering::SeqCst);
         self.fail.store(0, Ordering::SeqCst);
         self.songs.store(0, Ordering::SeqCst);
@@ -725,6 +732,75 @@ fn now_stamp() -> String {
     chrono::Local::now().format("%Y%m%d-%H%M%S").to_string()
 }
 
+/// 一次性补全暂存区的厂牌：只读写一次 stage 文件，分批查询并逐批写日志
+async fn fill_all(app: &tauri::AppHandle, client: &Client, job: &Job, kind: &str) -> Result<(usize, usize), String> {
+    let dir = stage_dir(app, kind)?;
+    let files = read_stage(&dir);
+    let mut need: Vec<i64> = Vec::new();
+    let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    for (_, d) in &files {
+        if let Some(rows) = d["rows"].as_array() {
+            for r in rows {
+                let empty = r["company"].as_str().map(|s| s.is_empty()).unwrap_or(true);
+                if empty {
+                    if let Some(aid) = r["alId"].as_i64() {
+                        if aid > 0 && seen.insert(aid) { need.push(aid); }
+                    }
+                }
+            }
+        }
+    }
+    // 单次整理最多补 3000 张，避免第一次整理要等太久；其余的再点一次整理接着补
+    const MAX_FILL: usize = 3000;
+    let all_need = need.len();
+    let rest = all_need.saturating_sub(MAX_FILL);
+    if need.len() > MAX_FILL { need.truncate(MAX_FILL); }
+    let total = need.len();
+    job.phase_total.store(total, Ordering::SeqCst);
+    job.phase_done.store(0, Ordering::SeqCst);
+    if total == 0 { return Ok((0, 0)); }
+    job.log("info", format!("需要补厂牌的专辑 {} 张，本次处理 {}", all_need, total));
+    if rest > 0 { job.log("warn", format!("还有 {} 张留到下次整理继续（分批不影响文档生成）", rest)); }
+
+    let mut found: HashMap<i64, String> = HashMap::new();
+    for (i, chunk) in need.chunks(60).enumerate() {
+        if job.stop.load(Ordering::SeqCst) { break; }
+        let got = api::fill_companies(client, chunk).await;
+        found.extend(got);
+        let done = ((i + 1) * 60).min(total);
+        job.phase_done.store(done, Ordering::SeqCst);
+        job.log("info", format!("补厂牌 {}/{}（已取到 {} 张）", done, total, found.len()));
+    }
+
+    let mut updated = 0usize;
+    for (p, mut d) in files {
+        let mut changed = false;
+        if let Some(rows) = d["rows"].as_array_mut() {
+            for r in rows {
+                if let Some(aid) = r["alId"].as_i64() {
+                    if let Some(cmp) = found.get(&aid) {
+                        if !cmp.is_empty() && r["company"].as_str().unwrap_or("").is_empty() {
+                            r["company"] = serde_json::json!(cmp);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+        if changed {
+            updated += 1;
+            let _ = fs::write(&p, d.to_string());
+        }
+    }
+    if let Ok(dir_app) = app.path().app_data_dir() {
+        let snap = api::companies_snapshot();
+        let map: serde_json::Map<String, Value> = snap.into_iter()
+            .map(|(k, v)| (k.to_string(), Value::String(v))).collect();
+        let _ = fs::write(dir_app.join("companies.json"), Value::Object(map).to_string());
+    }
+    Ok((found.len(), updated))
+}
+
 async fn run_job(
     app: tauri::AppHandle,
     client: Arc<Client>,
@@ -767,20 +843,11 @@ async fn run_job(
     if do_tidy_flag && !job.stop.load(Ordering::SeqCst) {
         job.set_phase("tidy");
         job.log("step", "整理：补厂牌并生成文档");
-        let mut rounds = 0;
-        loop {
-            if job.stop.load(Ordering::SeqCst) { break; }
-            rounds += 1;
-            if rounds > 80 { break; }
-            match do_fill(&app, &client, &kind, 300).await {
-                Ok((found, _updated, remaining)) => {
-                    if found == 0 && remaining == 0 { break; }
-                    job.log("info", format!("补厂牌 +{} 张，剩余 {}", found, remaining));
-                    if remaining == 0 { break; }
-                }
-                Err(e) => { job.log("err", format!("补厂牌失败：{}", e)); break; }
-            }
+        match fill_all(&app, &client, job.as_ref(), &kind).await {
+            Ok((found, updated)) => job.log("ok", format!("补厂牌完成：{} 张，回写 {} 个", found, updated)),
+            Err(e) => job.log("err", format!("补厂牌失败：{}", e)),
         }
+        job.set_phase("tidy-doc");
         match do_tidy(&app, &kind).await {
             Ok(v) => {
                 set_state(&app, "lastTidy", &now_human());
@@ -863,6 +930,8 @@ fn job_status(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Value
         "step": job.step.lock().unwrap().clone(),
         "total": job.total.load(Ordering::SeqCst),
         "done": job.done.load(Ordering::SeqCst),
+        "phaseTotal": job.phase_total.load(Ordering::SeqCst),
+        "phaseDone": job.phase_done.load(Ordering::SeqCst),
         "ok": job.ok.load(Ordering::SeqCst),
         "fail": job.fail.load(Ordering::SeqCst),
         "songs": job.songs.load(Ordering::SeqCst),

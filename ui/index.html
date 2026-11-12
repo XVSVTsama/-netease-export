@@ -206,7 +206,7 @@
       <div class="hint">
         导出文件写入 <code>/sdcard/Download/网易云导出</code>，同时在应用私有目录留一份。<br>
         本应用只导出公开的歌单信息与曲目元数据，不播放、不下载音频，也不绕过任何付费或版权限制。<br>
-        版本 <span id="ver">1.4.8</span>
+        版本 <span id="ver">1.4.9</span>
       </div>
     </section>
   </div>
@@ -618,7 +618,7 @@ function accStats(st) {
 
 /* ---------- 处理任务：后台运行，同步 → 整理 → 核验 ---------- */
 const KIND_NAME = { pl: '我创建的歌单', plfav: '收藏歌单', al: '收藏专辑' };
-const PHASE = { sync: '同步', tidy: '整理', check: '核验', done: '完成' };
+const PHASE = { sync: '同步', tidy: '补厂牌', 'tidy-doc': '生成文档', check: '核验', done: '完成' };
 const RUN_BTNS = { pl: 'btnRunPl', plfav: 'btnRunFav', al: 'btnRunAl' };
 let JOB = null, JOB_KIND = '', pollTimer2 = null, LOGLEN = -1;
 
@@ -667,12 +667,17 @@ function renderJob(j) {
   if (j.kind) JOB_KIND = j.kind;
   const label = PHASE[j.phase] || '任务';
   const title = JOB_KIND ? label + ' · ' + KIND_NAME[JOB_KIND] : label;
-  const pct = j.phase === 'done' ? 100 : (j.total ? Math.round(j.done / j.total * 100) : 0);
+  const pct = j.phase === 'done' ? 100
+    : j.phase === 'sync' ? (j.total ? Math.round(j.done / j.total * 100) : 0)
+    : (j.phaseTotal ? Math.round(j.phaseDone / j.phaseTotal * 100) : 0);
   setJob(j.running, title, j.running ? null : (j.fail ? 'err' : 'ok'));
   if (j.running) {
     const per = j.done ? j.elapsed / j.done : 0;
-    setBatch(j.step ? label + ' ' + j.done + '/' + j.total + ' · ' + j.step + ' · 点击停止'
-      : label + ' 进行中…', pct);
+    let line;
+    if (j.phase === 'sync') line = label + ' ' + j.done + '/' + j.total + (j.step ? ' · ' + j.step : '') + ' · 点击停止';
+    else if (j.phaseTotal) line = label + ' ' + j.phaseDone + '/' + j.phaseTotal + ' · 点击停止';
+    else line = label + ' 进行中… · 点击停止';
+    setBatch(line, pct);
     setMeta([
       j.done + '/' + j.total, pct + '%', '已用 ' + fmtSec(j.elapsed),
       j.done > 1 ? '剩约 ' + fmtSec(per * (j.total - j.done)) : '',

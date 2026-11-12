@@ -22,7 +22,7 @@ impl Client {
     pub fn new() -> Self {
         Self {
             http: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(20))
+                .timeout(std::time::Duration::from_secs(12))
                 .build()
                 .expect("http client"),
             cookies: Mutex::new(HashMap::new()),
@@ -100,13 +100,7 @@ impl Client {
                     self.store_set_cookie(&resp);
                     let status = resp.status();
                     match resp.json::<Value>().await {
-                        Ok(v) => {
-                            let code = v["code"].as_i64().unwrap_or(200);
-                            if code == 200 {
-                                return Ok(v);
-                            }
-                            last_err = format!("接口返回 {} {}", code, v["message"].as_str().unwrap_or(""));
-                        }
+                        Ok(v) => return Ok(v),
                         Err(e) => last_err = format!("HTTP {} 解析失败 {}", status.as_u16(), e),
                     }
                 }

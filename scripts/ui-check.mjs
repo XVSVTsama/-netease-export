@@ -79,7 +79,7 @@ const data = {
   stage_stats: { ok: true, lists: 3, total: 9, unique: 8, down: 1, special: 2, nonLatin: 1, sub: '歌单' },
   stage_ids: { ids: [] },
   job_start: { ok: true, log: '/tmp/job.log' },
-  job_status: { running: false, phase: 'done', kind: 'pl', step: '', total: 3, done: 3, ok: 3, fail: 0, songs: 9, elapsed: 1.4, logs: [{ k: 'ok', ts: '12:00:01', t: '测试歌单 · 2 首' }], times: { lastSync: '2026-11-12 12:00', lastTidy: '2026-11-12 12:01', lastCheck: '' }, logPath: '/tmp/job.log' },
+  job_status: { running: false, phase: 'done', kind: 'pl', step: '', total: 3, done: 3, phaseTotal: 9, phaseDone: 9, ok: 3, fail: 0, songs: 9, elapsed: 1.4, logs: [{ k: 'ok', ts: '12:00:01', t: '测试歌单 · 2 首' }], times: { lastSync: '2026-11-12 12:00', lastTidy: '2026-11-12 12:01', lastCheck: '' }, logPath: '/tmp/job.log' },
   job_stop: { ok: true },
   copy_log: { ok: true, paths: ['/sdcard/Download/网易云导出/日志/job.log'] },
   fill_companies: { ok: true, checked: 300, found: 300, updated: 3, remaining: 0 },
