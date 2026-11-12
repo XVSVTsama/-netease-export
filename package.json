@@ -1,6 +1,6 @@
 {
   "name": "netease-export",
-  "version": "1.4.20",
+  "version": "1.4.21",
   "private": true,
   "type": "module",
   "description": "网易云歌单 / 收藏导出与本地面板",

@@ -624,8 +624,12 @@ fn tree_uri_to_path(uri: &str) -> Option<String> {
 
 #[cfg(target_os = "android")]
 mod android_fs {
-    use jni::objects::{JObject, JString, JValue};
+    use jni::objects::{GlobalRef, JObject, JString, JValue};
     use jni::JavaVM;
+    use std::sync::OnceLock;
+
+    // ndk_context 给的是主线程的 local ref，跨线程用会直接崩，这里升级成全局引用
+    static ACTIVITY: OnceLock<GlobalRef> = OnceLock::new();
 
     fn with_env<T>(
         f: impl FnOnce(&mut jni::JNIEnv, &JObject) -> Result<T, String>,
@@ -634,8 +638,21 @@ mod android_fs {
         let vm = unsafe { JavaVM::from_raw(ctx.vm() as *mut jni::sys::JavaVM) }
             .map_err(|e| format!("取 JavaVM 失败: {}", e))?;
         let mut env = vm.attach_current_thread().map_err(|e| format!("attach 失败: {}", e))?;
-        let activity = unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
-        f(&mut env, &activity)
+        if ACTIVITY.get().is_none() {
+            let local = unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
+            let global = env
+                .new_global_ref(&local)
+                .map_err(|e| format!("转全局引用失败: {}", e))?;
+            let _ = ACTIVITY.set(global);
+        }
+        let act = ACTIVITY.get().ok_or_else(|| "取不到 Activity".to_string())?;
+        let out = f(&mut env, act.as_obj());
+        // 不要留 pending exception 给下一次 JNI 调用
+        if let Ok(true) = env.exception_check() {
+            let _ = env.exception_describe();
+            let _ = env.exception_clear();
+        }
+        out
     }
 
     /// 拉起系统的「选择文件夹」界面
@@ -713,23 +730,43 @@ mod android_fs {
 }
 
 #[tauri::command]
-fn pick_export_dir() -> Result<Value, String> {
+async fn pick_export_dir(app: tauri::AppHandle) -> Result<Value, String> {
     #[cfg(target_os = "android")]
     {
-        android_fs::pick_dir()?;
+        // 必须在主线程启动 Activity，否则连同 local ref 一起崩
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            let _ = tx.send(android_fs::pick_dir());
+        })
+        .map_err(|e| format!("切主线程失败: {}", e))?;
+        let res = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| format!("启动选择器超时: {}", e))?;
+        res?;
         Ok(serde_json::json!({ "ok": true }))
     }
     #[cfg(not(target_os = "android"))]
     {
+        let _ = app;
         Err("只有 Android 支持系统目录选择".into())
     }
 }
 
 #[tauri::command]
-fn take_picked_dir(app: tauri::AppHandle) -> Result<Value, String> {
+async fn take_picked_dir(app: tauri::AppHandle) -> Result<Value, String> {
     #[cfg(target_os = "android")]
     {
-        let uri = android_fs::read_picked()?.ok_or_else(|| "还没选目录".to_string())?;
+        let handle = app.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle
+            .run_on_main_thread(move || {
+                let _ = tx.send(android_fs::read_picked());
+            })
+            .map_err(|e| format!("切主线程失败: {}", e))?;
+        let picked = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .map_err(|e| format!("读取超时: {}", e))?;
+        let uri = picked?.ok_or_else(|| "还没选目录".to_string())?;
         let path = tree_uri_to_path(&uri)
             .ok_or_else(|| "只支持内部存储（primary）上的目录".to_string())?;
         match dir_writable(Path::new(&path)) {
