@@ -647,43 +647,27 @@ mod android_fs {
         }
         let act = ACTIVITY.get().ok_or_else(|| "取不到 Activity".to_string())?;
         let out = f(&mut env, act.as_obj());
-        // 不要留 pending exception 给下一次 JNI 调用
+        // 有异常就把类型和消息带回去，别只留一句 "Java exception was thrown"
         if let Ok(true) = env.exception_check() {
-            let _ = env.exception_describe();
+            let thrown = env.exception_occurred().ok();
             let _ = env.exception_clear();
+            let desc = thrown.and_then(|t| {
+                env.call_method(&t, "toString", "()Ljava/lang/String;", &[])
+                    .ok()
+                    .and_then(|v| v.l().ok())
+                    .and_then(|o| env.get_string(&JString::from(o)).ok())
+                    .map(|x| x.to_string_lossy().to_string())
+            });
+            return Err(format!("Java 异常：{}", desc.unwrap_or_else(|| "未知".into())));
         }
         out
     }
 
-    /// 拉起系统的「选择文件夹」界面
+    /// 拉起系统的「选择文件夹」界面（具体 Intent 组装在 MainActivity 里做）
     pub fn pick_dir() -> Result<(), String> {
         with_env(|env, act| {
-            let action = env
-                .new_string("android.intent.action.OPEN_DOCUMENT_TREE")
+            env.call_method(act, "etaPickFolder", "()V", &[])
                 .map_err(|e| e.to_string())?;
-            let action_obj = JObject::from(action);
-            let intent = env
-                .new_object(
-                    "android/content/Intent",
-                    "(Ljava/lang/String;)V",
-                    &[JValue::Object(&action_obj)],
-                )
-                .map_err(|e| e.to_string())?;
-            // READ | WRITE | PERSISTABLE
-            env.call_method(
-                &intent,
-                "addFlags",
-                "(I)Landroid/content/Intent;",
-                &[JValue::Int(0x43)],
-            )
-            .map_err(|e| e.to_string())?;
-            env.call_method(
-                act,
-                "startActivityForResult",
-                "(Landroid/content/Intent;I)V",
-                &[JValue::Object(&intent), JValue::Int(4321)],
-            )
-            .map_err(|e| e.to_string())?;
             Ok(())
         })
     }

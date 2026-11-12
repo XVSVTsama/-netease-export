@@ -64,6 +64,16 @@ jobs:
               print('already patched')
               sys.exit(0)
           method = '''
+            fun etaPickFolder() {
+              val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE)
+              intent.addFlags(
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                  android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                  android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+              )
+              startActivityForResult(intent, 4321)
+            }
+
             override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
               super.onActivityResult(requestCode, resultCode, data)
               if (requestCode == 4321 && resultCode == android.app.Activity.RESULT_OK) {
