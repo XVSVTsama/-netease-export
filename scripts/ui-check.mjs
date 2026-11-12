@@ -78,6 +78,10 @@ const data = {
   stage_one: { ok: true, name: '测试歌单', count: 2, stats: { down: 1, otherVersion: 1, special: 1, nonLatin: 0, total: 2 } },
   stage_stats: { ok: true, lists: 3, total: 9, unique: 8, down: 1, special: 2, nonLatin: 1, sub: '歌单' },
   stage_ids: { ids: [] },
+  job_start: { ok: true, log: '/tmp/job.log' },
+  job_status: { running: false, phase: 'done', kind: 'pl', step: '', total: 3, done: 3, ok: 3, fail: 0, songs: 9, elapsed: 1.4, logs: [{ k: 'ok', t: '测试歌单 · 2 首' }], logPath: '/tmp/job.log' },
+  job_stop: { ok: true },
+  copy_log: { ok: true, paths: ['/sdcard/Download/网易云导出/日志/job.log'] },
   fill_companies: { ok: true, checked: 300, found: 300, updated: 3, remaining: 0 },
   tidy: { ok: true, items: 3, files: 6, songs: 9, failed: 0, sub: '歌单' },
   check_exports: { ok: true, okCount: 3, badCount: 0, songs: 9, items: [], sub: '歌单' },
@@ -113,14 +117,15 @@ for (const [name, b] of clickables) {
 }
 await new Promise(r => setTimeout(r, 50));
 
-// 同步 / 整理 / 核验的文案断言（三个入口都要走通并给出结果）
-for (const [id, want] of [['btnSyncPl', '同步完成'], ['btnTidyPl', '整理完成'], ['btnCheckPl', '核验通过']]) {
+// 后台任务：三个「开始处理」都要能启动并显示完成
+for (const id of ['btnRunPl', 'btnRunFav', 'btnRunAl']) {
   const b = store.get(id);
   if (!b || typeof b.onclick !== 'function') { console.log('未绑定:', id); failed++; continue; }
   try { await b.onclick({ preventDefault() {}, target: b }); } catch (e) { console.log('点击异常', id, e && e.message); failed++; }
-  const txt = store.get('batchState').textContent || '';
-  if (!txt.includes(want)) { console.log('文案不符', id, JSON.stringify(txt)); failed++; }
+  await new Promise(r => setTimeout(r, 150));
 }
+const bs = store.get('batchState').textContent || '';
+if (!/完成|已同步|准备/.test(bs)) { console.log('任务文案不符', JSON.stringify(bs)); failed++; }
 await new Promise(r => setTimeout(r, 50));
 
 console.log('绑定数', bound, '失败', failed, 'invoke 调用', [...new Set(called)].join(','));

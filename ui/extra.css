@@ -38,17 +38,17 @@ header.top{padding-top:env(safe-area-inset-top,0px)}
 }
 @keyframes eta-pop { from { transform: translateY(-3px); } to { transform: none; } }
 
-.job-log { list-style: none; margin: 10px 0 2px; padding: 0 0 2px; max-height: 132px; overflow-y: auto; scrollbar-width: thin; }
-.job-log li {
-  display: flex; align-items: center; gap: 8px; font-size: 12.5px; line-height: 1.4;
-  background: var(--bg-elev); border-radius: 9px; padding: 7px 10px; margin-bottom: 6px;
-  animation: eta-slide .22s ease;
+.job-log {
+  margin: 10px 0 2px; padding: 0 2px 2px; max-height: 190px; overflow-y: auto;
+  font-size: 12.5px; line-height: 1.5; font-variant-numeric: tabular-nums;
 }
-.job-log li.ok { border-left: 3px solid var(--ok); }
-.job-log li.err { border-left: 3px solid var(--accent); }
-.job-log li .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.job-log li .tx { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
-@keyframes eta-slide { from { transform: translateY(-4px); } to { transform: none; } }
+.job-log .lg { padding: 3px 8px; border-radius: 6px; margin-bottom: 2px; word-break: break-word; }
+.job-log .lg.ok { color: var(--ok); }
+.job-log .lg.err { color: var(--accent); }
+.job-log .lg.step { color: var(--text); font-weight: 600; background: var(--bg-elev); }
+.job-log .lg.info { color: var(--muted); }
+.job-log .lg.warn { color: var(--warn); }
+.job-log .lg.done { color: var(--text); font-weight: 600; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 5px; }
 
 .dot.run { animation: eta-pulse 1.3s ease-in-out infinite; }
 @keyframes eta-pulse {

@@ -6,14 +6,87 @@ use client::Client;
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tauri::{Manager, State};
+
+/// 后台任务：同步 → 整理 → 核验，脱离 WebView 运行，切后台/锁屏也不会中断
+pub struct Job {
+    running: AtomicBool,
+    stop: AtomicBool,
+    phase: Mutex<String>,
+    kind: Mutex<String>,
+    step: Mutex<String>,
+    total: AtomicUsize,
+    done: AtomicUsize,
+    ok: AtomicUsize,
+    fail: AtomicUsize,
+    songs: AtomicI64,
+    started: Mutex<Option<Instant>>,
+    logs: Mutex<Vec<(String, String)>>,
+    log_path: Mutex<String>,
+}
+
+impl Job {
+    fn new() -> Self {
+        Self {
+            running: AtomicBool::new(false),
+            stop: AtomicBool::new(false),
+            phase: Mutex::new(String::new()),
+            kind: Mutex::new(String::new()),
+            step: Mutex::new(String::new()),
+            total: AtomicUsize::new(0),
+            done: AtomicUsize::new(0),
+            ok: AtomicUsize::new(0),
+            fail: AtomicUsize::new(0),
+            songs: AtomicI64::new(0),
+            started: Mutex::new(None),
+            logs: Mutex::new(Vec::new()),
+            log_path: Mutex::new(String::new()),
+        }
+    }
+
+    fn reset(&self, total: usize, log_path: String, kind: &str) {
+        *self.kind.lock().unwrap() = kind.to_string();
+        self.stop.store(false, Ordering::SeqCst);
+        self.total.store(total, Ordering::SeqCst);
+        self.done.store(0, Ordering::SeqCst);
+        self.ok.store(0, Ordering::SeqCst);
+        self.fail.store(0, Ordering::SeqCst);
+        self.songs.store(0, Ordering::SeqCst);
+        *self.phase.lock().unwrap() = "sync".to_string();
+        *self.step.lock().unwrap() = String::new();
+        *self.started.lock().unwrap() = Some(Instant::now());
+        self.logs.lock().unwrap().clear();
+        *self.log_path.lock().unwrap() = log_path;
+    }
+
+    fn set_phase(&self, p: &str) {
+        *self.phase.lock().unwrap() = p.to_string();
+    }
+
+    fn log(&self, kind: &str, text: impl Into<String>) {
+        let text = text.into();
+        let path = self.log_path.lock().unwrap().clone();
+        if !path.is_empty() {
+            use std::io::Write;
+            if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&path) {
+                let _ = writeln!(f, "[{}] {}", kind, text);
+            }
+        }
+        let mut logs = self.logs.lock().unwrap();
+        logs.push((kind.to_string(), text));
+        if logs.len() > 600 { logs.remove(0); }
+    }
+}
 
 pub struct AppState {
     client: Arc<Client>,
     last_qr: Mutex<String>,
     special: Mutex<Vec<Value>>,
     special_ids: Mutex<std::collections::HashSet<i64>>,
+    job: Arc<Job>,
 }
 
 fn cookie_path(app: &tauri::AppHandle) -> Option<PathBuf> {
@@ -397,23 +470,27 @@ fn read_stage(dir: &std::path::Path) -> Vec<(PathBuf, Value)> {
     out
 }
 
-/// 同步：把一个歌单 / 收藏歌单 / 收藏专辑的详情抓到暂存区，不生成文档
+/// 抓一个歌单 / 收藏歌单 / 收藏专辑的详情进暂存区（不生成文档）
+async fn do_stage(app: &tauri::AppHandle, client: &Client, kind: &str, id: i64) -> Result<(String, i64, Value), String> {
+    if kind_sub(kind).is_none() { return Err("未知类型".into()); }
+    let d = if kind == "al" {
+        api::album_detail(client, id).await?
+    } else {
+        api::playlist_detail(client, id, false).await?
+    };
+    let dir = stage_dir(app, kind)?;
+    fs::write(dir.join(format!("{}.json", id)), d.to_string()).map_err(|e| e.to_string())?;
+    Ok((
+        d["name"].as_str().unwrap_or("").to_string(),
+        d["count"].as_i64().unwrap_or(0),
+        d["stats"].clone(),
+    ))
+}
+
 #[tauri::command]
 async fn stage_one(app: tauri::AppHandle, state: State<'_, AppState>, kind: String, id: i64) -> Result<Value, String> {
-    if kind_sub(&kind).is_none() { return Err("未知类型".into()); }
-    let d = if kind == "al" {
-        api::album_detail(&state.client, id).await?
-    } else {
-        api::playlist_detail(&state.client, id, false).await?
-    };
-    let dir = stage_dir(&app, &kind)?;
-    fs::write(dir.join(format!("{}.json", id)), d.to_string()).map_err(|e| e.to_string())?;
-    Ok(serde_json::json!({
-        "ok": true,
-        "name": d["name"].clone(),
-        "count": d["count"].as_i64().unwrap_or(0),
-        "stats": d["stats"].clone()
-    }))
+    let (name, count, stats) = do_stage(&app, &state.client, &kind, id).await?;
+    Ok(serde_json::json!({ "ok": true, "name": name, "count": count, "stats": stats }))
 }
 
 /// 已同步到暂存区的歌单 / 专辑 ID
@@ -426,10 +503,9 @@ fn stage_ids(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
     Ok(serde_json::json!({ "ids": ids }))
 }
 
-/// 分批补厂牌：把暂存区里缺厂牌的专辑按 limit 张/次补齐，回写暂存文件
-#[tauri::command]
-async fn fill_companies(app: tauri::AppHandle, state: State<'_, AppState>, kind: String, limit: usize) -> Result<Value, String> {
-    let dir = stage_dir(&app, &kind)?;
+/// 分批补厂牌：最多 limit 张，回写暂存文件；返回 (找到数量, 回写歌单数, 剩余)
+async fn do_fill(app: &tauri::AppHandle, client: &Client, kind: &str, limit: usize) -> Result<(usize, usize, usize), String> {
+    let dir = stage_dir(app, kind)?;
     let files = read_stage(&dir);
     let mut need: Vec<i64> = Vec::new();
     let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
@@ -447,7 +523,7 @@ async fn fill_companies(app: tauri::AppHandle, state: State<'_, AppState>, kind:
     }
     let remaining_total = need.len();
     if need.len() > limit { need.truncate(limit); }
-    let found = api::fill_companies(&state.client, &need).await;
+    let found = api::fill_companies(client, &need).await;
 
     let mut updated = 0usize;
     for (p, mut d) in files {
@@ -470,7 +546,6 @@ async fn fill_companies(app: tauri::AppHandle, state: State<'_, AppState>, kind:
         }
     }
 
-    // 缓存落盘，下次启动直接命中
     if let Ok(dir_app) = app.path().app_data_dir() {
         let snap = api::companies_snapshot();
         let map: serde_json::Map<String, Value> = snap.into_iter()
@@ -478,13 +553,13 @@ async fn fill_companies(app: tauri::AppHandle, state: State<'_, AppState>, kind:
         let _ = fs::write(dir_app.join("companies.json"), Value::Object(map).to_string());
     }
 
-    Ok(serde_json::json!({
-        "ok": true,
-        "checked": need.len(),
-        "found": found.len(),
-        "updated": updated,
-        "remaining": remaining_total.saturating_sub(need.len())
-    }))
+    Ok((found.len(), updated, remaining_total.saturating_sub(need.len())))
+}
+
+#[tauri::command]
+async fn fill_companies(app: tauri::AppHandle, state: State<'_, AppState>, kind: String, limit: usize) -> Result<Value, String> {
+    let (found, updated, remaining) = do_fill(&app, &state.client, &kind, limit).await?;
+    Ok(serde_json::json!({ "ok": true, "found": found, "updated": updated, "remaining": remaining }))
 }
 
 /// 同步后的汇总口径：去重曲目、下架、特殊字符、非拉丁
@@ -517,11 +592,10 @@ async fn stage_stats(app: tauri::AppHandle, kind: String) -> Result<Value, Strin
     }))
 }
 
-/// 整理：暂存区 → CSV + MD 文档
-#[tauri::command]
-async fn tidy(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
-    let sub = kind_sub(&kind).ok_or_else(|| "未知类型".to_string())?;
-    let dir = stage_dir(&app, &kind)?;
+/// 整理：暂存区 → CSV + MD + 索引 + 总表
+async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
+    let sub = kind_sub(kind).ok_or_else(|| "未知类型".to_string())?;
+    let dir = stage_dir(app, kind)?;
     let mut files = 0usize;
     let mut items = 0usize;
     let mut songs = 0i64;
@@ -532,8 +606,8 @@ async fn tidy(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
 
     for (_, d) in read_stage(&dir) {
         let name = sanitize(d["name"].as_str().unwrap_or("未命名"));
-        let (csv_paths, _) = write_both(&app, &format!("{}/{}.csv", sub, name), &to_csv(&d));
-        let (md_paths, _) = write_both(&app, &format!("{}/{}.md", sub, name), &to_md(&d));
+        let (csv_paths, _) = write_both(app, &format!("{}/{}.csv", sub, name), &to_csv(&d));
+        let (md_paths, _) = write_both(app, &format!("{}/{}.md", sub, name), &to_md(&d));
         if csv_paths.is_empty() || md_paths.is_empty() { failed += 1; continue; }
         files += 2;
         items += 1;
@@ -550,22 +624,20 @@ async fn tidy(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
         }
     }
 
-    // 索引文档：与 PC 面板的 00 索引对齐
     if !index_rows.is_empty() {
         let idx = format!(
             "# {}\n\n- 项数：{}\n- 曲目合计：{} 首\n- 生成时间：{}\n\n| 名称 | 曲目 | 文件 |\n| --- | --- | --- |\n{}\n",
             sub, items, songs, chrono_like_now(), index_rows.join("\n")
         );
-        let (p, _) = write_both(&app, &format!("{}/00_索引.md", sub), &idx);
+        let (p, _) = write_both(app, &format!("{}/00_索引.md", sub), &idx);
         if !p.is_empty() { files += 1; }
     }
 
-    // 汇总表：自建歌单的全部曲目（按歌曲 ID 去重），与 PC 的 表格/all_songs.csv 对齐
     let mut unique = 0i64;
     if kind == "pl" && !all_rows.is_empty() {
         unique = all_rows.len() as i64;
         let d = serde_json::json!({ "name": "全部曲目", "id": 0, "count": unique, "rows": all_rows });
-        let (p, _) = write_both(&app, "表格/all_songs.csv", &to_csv(&d));
+        let (p, _) = write_both(app, "表格/all_songs.csv", &to_csv(&d));
         if !p.is_empty() { files += 1; }
     }
 
@@ -575,11 +647,15 @@ async fn tidy(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
     }))
 }
 
-/// 核验：比对暂存区与已生成的文档
 #[tauri::command]
-async fn check_exports(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
-    let sub = kind_sub(&kind).ok_or_else(|| "未知类型".to_string())?;
-    let dir = stage_dir(&app, &kind)?;
+async fn tidy(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
+    do_tidy(&app, &kind).await
+}
+
+/// 核验：比对暂存区与已生成的文档
+async fn do_check(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
+    let sub = kind_sub(kind).ok_or_else(|| "未知类型".to_string())?;
+    let dir = stage_dir(app, kind)?;
     let out = app.path().app_data_dir().map_err(|e| e.to_string())?.join("exports").join(sub);
     let mut ok_count = 0usize;
     let mut bad_count = 0usize;
@@ -614,6 +690,179 @@ async fn check_exports(app: tauri::AppHandle, kind: String) -> Result<Value, Str
     }))
 }
 
+#[tauri::command]
+async fn check_exports(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
+    do_check(&app, &kind).await
+}
+
+/* ---------------- 后台任务：同步 → 整理 → 核验 ---------------- */
+
+fn now_stamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let (days, rem) = (secs / 86400, secs % 86400);
+    format!("d{}T{:02}{:02}{:02}", days, rem / 3600, (rem % 3600) / 60, rem % 60)
+}
+
+async fn run_job(
+    app: tauri::AppHandle,
+    client: Arc<Client>,
+    job: Arc<Job>,
+    kind: String,
+    ids: Vec<i64>,
+    do_tidy_flag: bool,
+    do_check_flag: bool,
+) {
+    let total = ids.len();
+    let label = kind_sub(&kind).unwrap_or("歌单").to_string();
+    job.log("step", format!("开始：{} · {} 项待同步", label, total));
+
+    let mut ok = 0usize;
+    let mut fail = 0usize;
+    let mut songs = 0i64;
+    for (i, id) in ids.iter().enumerate() {
+        if job.stop.load(Ordering::SeqCst) {
+            job.log("warn", "已按请求停止");
+            break;
+        }
+        job.done.store(i + 1, Ordering::SeqCst);
+        match do_stage(&app, &client, &kind, *id).await {
+            Ok((name, count, _)) => {
+                ok += 1;
+                songs += count;
+                job.ok.store(ok, Ordering::SeqCst);
+                job.songs.store(songs, Ordering::SeqCst);
+                *job.step.lock().unwrap() = name.clone();
+                job.log("ok", format!("{} · {} 首", name, count));
+            }
+            Err(e) => {
+                fail += 1;
+                job.fail.store(fail, Ordering::SeqCst);
+                job.log("err", format!("#{} · {}", id, e));
+            }
+        }
+    }
+
+    if do_tidy_flag && !job.stop.load(Ordering::SeqCst) {
+        job.set_phase("tidy");
+        job.log("step", "整理：补厂牌并生成文档");
+        let mut rounds = 0;
+        loop {
+            if job.stop.load(Ordering::SeqCst) { break; }
+            rounds += 1;
+            if rounds > 80 { break; }
+            match do_fill(&app, &client, &kind, 300).await {
+                Ok((found, _updated, remaining)) => {
+                    if found == 0 && remaining == 0 { break; }
+                    job.log("info", format!("补厂牌 +{} 张，剩余 {}", found, remaining));
+                    if remaining == 0 { break; }
+                }
+                Err(e) => { job.log("err", format!("补厂牌失败：{}", e)); break; }
+            }
+        }
+        match do_tidy(&app, &kind).await {
+            Ok(v) => job.log("ok", format!(
+                "整理完成：{} 项 · {} 个文件 · {} 首（去重 {}）",
+                v["items"], v["files"], v["songs"], v["unique"])),
+            Err(e) => job.log("err", format!("整理失败：{}", e)),
+        }
+    }
+
+    if do_check_flag && !job.stop.load(Ordering::SeqCst) {
+        job.set_phase("check");
+        job.log("step", "核验文档");
+        match do_check(&app, &kind).await {
+            Ok(v) => {
+                let bad = v["badCount"].as_u64().unwrap_or(0);
+                job.log(if bad == 0 { "ok" } else { "err" },
+                    format!("核验：通过 {} 项 · 问题 {} 项", v["okCount"], bad));
+            }
+            Err(e) => job.log("err", format!("核验失败：{}", e)),
+        }
+    }
+
+    job.set_phase("done");
+    job.running.store(false, Ordering::SeqCst);
+    job.log("done", format!("完成：成功 {} · 失败 {} · {} 首", ok, fail, songs));
+}
+
+#[tauri::command]
+async fn job_start(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    kind: String,
+    ids: Vec<i64>,
+    do_tidy: bool,
+    do_check: bool,
+) -> Result<Value, String> {
+    if kind_sub(&kind).is_none() { return Err("未知类型".into()); }
+    let job = state.job.clone();
+    if job.running.swap(true, Ordering::SeqCst) {
+        return Err("已有任务在运行".into());
+    }
+    let log_path = app.path().app_data_dir().ok()
+        .map(|d| {
+            let dir = d.join("logs");
+            let _ = fs::create_dir_all(&dir);
+            dir.join(format!("job-{}.log", now_stamp())).to_string_lossy().to_string()
+        })
+        .unwrap_or_default();
+    job.reset(ids.len(), log_path.clone(), &kind);
+
+    let task_app = app.clone();
+    let task_client = state.client.clone();
+    let task_job = job.clone();
+    tauri::async_runtime::spawn(async move {
+        run_job(task_app, task_client, task_job, kind, ids, do_tidy, do_check).await;
+    });
+
+    Ok(serde_json::json!({ "ok": true, "log": log_path }))
+}
+
+#[tauri::command]
+fn job_status(state: State<'_, AppState>) -> Result<Value, String> {
+    let job = &state.job;
+    let logs = job.logs.lock().unwrap();
+    let start = logs.len().saturating_sub(160);
+    let slice: Vec<Value> = logs[start..].iter()
+        .map(|(k, t)| serde_json::json!({ "k": k, "t": t }))
+        .collect();
+    drop(logs);
+    Ok(serde_json::json!({
+        "running": job.running.load(Ordering::SeqCst),
+        "phase": job.phase.lock().unwrap().clone(),
+        "kind": job.kind.lock().unwrap().clone(),
+        "step": job.step.lock().unwrap().clone(),
+        "total": job.total.load(Ordering::SeqCst),
+        "done": job.done.load(Ordering::SeqCst),
+        "ok": job.ok.load(Ordering::SeqCst),
+        "fail": job.fail.load(Ordering::SeqCst),
+        "songs": job.songs.load(Ordering::SeqCst),
+        "elapsed": job.started.lock().unwrap().map(|t| t.elapsed().as_secs_f64()).unwrap_or(0.0),
+        "logs": slice,
+        "logPath": job.log_path.lock().unwrap().clone()
+    }))
+}
+
+#[tauri::command]
+fn copy_log(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
+    let p = state.job.log_path.lock().unwrap().clone();
+    if p.is_empty() { return Err("还没有运行过任务".into()); }
+    let src = std::path::Path::new(&p);
+    if !src.exists() { return Err("日志文件不存在".into()); }
+    let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("job");
+    let text = fs::read_to_string(src).unwrap_or_default();
+    let (paths, _) = write_both(&app, &format!("日志/{}.log", stem), &text);
+    if paths.is_empty() { return Err("写入失败".into()); }
+    Ok(serde_json::json!({ "ok": true, "paths": paths }))
+}
+
+#[tauri::command]
+fn job_stop(state: State<'_, AppState>) -> Result<Value, String> {
+    state.job.stop.store(true, Ordering::SeqCst);
+    Ok(serde_json::json!({ "ok": true }))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let client = Arc::new(Client::new());
@@ -640,13 +889,14 @@ pub fn run() {
                 Ok(())
             }
         })
-        .manage(AppState { client, last_qr: Mutex::new(String::new()), special: Mutex::new(Vec::new()), special_ids: Mutex::new(std::collections::HashSet::new()) })
+        .manage(AppState { client, last_qr: Mutex::new(String::new()), special: Mutex::new(Vec::new()), special_ids: Mutex::new(std::collections::HashSet::new()), job: Arc::new(Job::new()) })
         .invoke_handler(tauri::generate_handler![
             qr_new, qr_poll, account, playlists, playlist_detail,
             login_cookie, login_phone_password, sms_sent, login_phone_captcha,
             login_email, logout, export_playlist, collected_albums, play_record, save_text,
             special_items, export_special, zip_exports, album_detail, export_album,
-            stage_one, stage_stats, stage_ids, fill_companies, tidy, check_exports
+            stage_one, stage_stats, stage_ids, fill_companies, tidy, check_exports,
+            job_start, job_status, job_stop, copy_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
