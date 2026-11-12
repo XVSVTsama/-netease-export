@@ -755,6 +755,8 @@ function renderLogs(logs) {
   const box = $('jobLog');
   box.innerHTML = logs.map(l => '<div class="lg k-' + l.k + '">' +
     (l.ts ? '<span class="ts">' + esc(l.ts) + '</span>' : '') + esc(l.t) + '</div>').join('');
+  const newest = box.lastElementChild;
+  if (newest) newest.classList.add('fresh');
   box.scrollTop = box.scrollHeight;
 }
 

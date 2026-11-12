@@ -71,3 +71,20 @@ header.top{padding-top:env(safe-area-inset-top,0px)}
 .track .thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: var(--bg-elev); flex: 0 0 auto; }
 .track .idx { padding-top: 2px; }
 .track .body .meta { margin-top: 2px; }
+
+/* ---------- 交互动效（只用位移和背景，不用 opacity，避免被节流后内容消失） ---------- */
+@keyframes eta-rise { from { transform: translateY(6px); } to { transform: none; } }
+.track, .stat { animation: eta-rise .22s ease both; }
+.track:nth-child(2), .stat:nth-child(2) { animation-delay: .02s; }
+.track:nth-child(3), .stat:nth-child(3) { animation-delay: .04s; }
+.track:nth-child(4), .stat:nth-child(4) { animation-delay: .06s; }
+.track:nth-child(5) { animation-delay: .08s; }
+.track:nth-child(6) { animation-delay: .10s; }
+.track:nth-child(n+7) { animation-delay: .12s; }
+
+.btn, .chip, .mode, .row, .track { transition: transform .12s ease, background-color .15s ease; }
+.btn:active, .chip:active, .mode:active { transform: scale(.97); }
+.row:active, .track:active { background: var(--bg-elev); }
+
+@keyframes eta-flash { from { background: var(--accent-soft); } to { background: transparent; } }
+.job-log .lg.fresh { animation: eta-flash 1s ease; }
