@@ -451,16 +451,43 @@ async fn save_text(app: tauri::AppHandle, name: String, content: String) -> Resu
     Ok(serde_json::json!({ "ok": true, "paths": saved }))
 }
 
-#[tauri::command]
-async fn special_items(state: State<'_, AppState>) -> Result<Value, String> {
-    let acc = state.special.lock().unwrap();
-    Ok(serde_json::json!({ "total": acc.len(), "items": acc.clone() }))
+/// 从 stage 现场算专项：不再依赖内存累加，重启 App 或走后台上任务都能看到
+fn special_from_stage(app: &tauri::AppHandle) -> (Vec<Value>, Value) {
+    let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    let mut items: Vec<Value> = Vec::new();
+    let (mut down, mut other, mut special, mut non_latin) = (0i64, 0i64, 0i64, 0i64);
+    for kind in ["pl", "plfav", "al"] {
+        let dir = match stage_dir(app, kind) { Ok(d) => d, Err(_) => continue };
+        for (_, d) in read_stage(&dir) {
+            if let Some(rows) = d["rows"].as_array() {
+                let (st, its) = api::classify_items(rows);
+                down += st["down"].as_i64().unwrap_or(0);
+                other += st["otherVersion"].as_i64().unwrap_or(0);
+                special += st["special"].as_i64().unwrap_or(0);
+                non_latin += st["nonLatin"].as_i64().unwrap_or(0);
+                for it in its {
+                    if let Some(id) = it["id"].as_i64() {
+                        if seen.insert(id) { items.push(it); }
+                    }
+                }
+            }
+        }
+    }
+    (items, serde_json::json!({
+        "down": down, "otherVersion": other, "special": special, "nonLatin": non_latin
+    }))
 }
 
 #[tauri::command]
-async fn export_special(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
-    let acc = state.special.lock().unwrap();
-    if acc.is_empty() { return Err("还没有专项数据，先导出几个歌单".into()); }
+async fn special_items(app: tauri::AppHandle) -> Result<Value, String> {
+    let (items, stats) = special_from_stage(&app);
+    Ok(serde_json::json!({ "total": items.len(), "items": items, "stats": stats }))
+}
+
+#[tauri::command]
+async fn export_special(app: tauri::AppHandle) -> Result<Value, String> {
+    let (acc, _) = special_from_stage(&app);
+    if acc.is_empty() { return Err("还没有专项数据，先同步歌单".into()); }
     let mut out = String::from("\u{feff}序号,歌名,制作人/团体,专辑,发行公司/厂牌,分类,歌曲ID\n");
     let e = |v: &Value| format!("\"{}\"", v.as_str().unwrap_or("").replace('"', "\"\""));
     for (i, it) in acc.iter().enumerate() {
@@ -471,7 +498,6 @@ async fn export_special(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
             e(&it["name"]), e(&it["ar"]), e(&it["al"]), e(&it["company"]), kinds,
             it["id"].as_i64().unwrap_or(0)));
     }
-    drop(acc);
     let (paths, _) = write_both(&app, "专项清单.csv", &out);
     if paths.is_empty() { return Err("写入失败".into()); }
     Ok(serde_json::json!({ "ok": true, "paths": paths }))
@@ -658,6 +684,7 @@ async fn stage_stats(app: tauri::AppHandle, kind: String) -> Result<Value, Strin
     let mut lists = 0i64;
     let mut total = 0i64;
     let mut down = 0i64;
+    let mut other = 0i64;
     let mut special = 0i64;
     let mut non_latin = 0i64;
     for (_, d) in read_stage(&dir) {
@@ -670,13 +697,15 @@ async fn stage_stats(app: tauri::AppHandle, kind: String) -> Result<Value, Strin
         }
         if let Some(st) = d["stats"].as_object() {
             down += st.get("down").and_then(|v| v.as_i64()).unwrap_or(0);
+            other += st.get("otherVersion").and_then(|v| v.as_i64()).unwrap_or(0);
             special += st.get("special").and_then(|v| v.as_i64()).unwrap_or(0);
             non_latin += st.get("nonLatin").and_then(|v| v.as_i64()).unwrap_or(0);
         }
     }
     Ok(serde_json::json!({
         "ok": true, "lists": lists, "total": total, "unique": ids.len() as i64,
-        "down": down, "special": special, "nonLatin": non_latin, "sub": kind_sub(&kind).unwrap_or("")
+        "down": down, "otherVersion": other, "special": special, "nonLatin": non_latin,
+        "sub": kind_sub(&kind).unwrap_or("")
     }))
 }
 

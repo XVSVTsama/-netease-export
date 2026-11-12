@@ -387,6 +387,22 @@ function renderAccStats() {
     statHtml('收藏专辑', ALBUMS.length || '—', ALBUMS.length ? '已加载' : '未加载');
 }
 
+function recomputeAcc() {
+  const a = { down: 0, otherVersion: 0, special: 0, nonLatin: 0, total: 0, playlists: 0 };
+  ['pl', 'plfav', 'al'].forEach(k => {
+    const s = SCOPE[k];
+    if (!s) return;
+    a.down += s.down || 0;
+    a.otherVersion += s.otherVersion || 0;
+    a.special += s.special || 0;
+    a.nonLatin += s.nonLatin || 0;
+    a.total += s.total || 0;
+    a.playlists += s.lists || 0;
+  });
+  ACC = a;
+  renderSpecial();
+}
+
 function renderSpecial() {
   $('specialStats').innerHTML = [
     ['已导出歌单', ACC.playlists],
@@ -943,7 +959,7 @@ $('btnRelogin').onclick = () => { $('loginCard').hidden = false; showView('home'
     if (j.running) { JOB = j; JOB_KIND = j.kind || ''; startPoll(); }
   }).catch(() => {});
   ['pl', 'plfav', 'al'].forEach(k => inv('stage_stats', { kind: k })
-    .then(s => { if (s && s.lists) { SCOPE[k] = s; renderHomeStats(); } })
+    .then(s => { if (s && s.lists) { SCOPE[k] = s; recomputeAcc(); renderHomeStats(); } })
     .catch(() => {}));
   checkAccount(true);
 })();
