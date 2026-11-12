@@ -77,6 +77,8 @@ const data = {
   save_text: { ok: true, paths: ['/sdcard/Download/网易云导出/x.csv'] },
   stage_one: { ok: true, name: '测试歌单', count: 2, stats: { down: 1, otherVersion: 1, special: 1, nonLatin: 0, total: 2 } },
   stage_stats: { ok: true, lists: 3, total: 9, unique: 8, down: 1, special: 2, nonLatin: 1, sub: '歌单' },
+  stage_ids: { ids: [] },
+  fill_companies: { ok: true, checked: 300, found: 300, updated: 3, remaining: 0 },
   tidy: { ok: true, items: 3, files: 6, songs: 9, failed: 0, sub: '歌单' },
   check_exports: { ok: true, okCount: 3, badCount: 0, songs: 9, items: [], sub: '歌单' },
 };

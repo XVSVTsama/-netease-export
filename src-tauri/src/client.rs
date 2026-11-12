@@ -2,6 +2,11 @@ use crate::crypto;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+/// 相邻请求的最小间隔：网易风控对连续请求很敏感，太快会整批失败
+const MIN_GAP: Duration = Duration::from_millis(160);
+const RETRIES: usize = 2;
 
 const UA_WEB: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const UA_APP: &str = "NeteaseMusic/8.9.70.240407164325(8009070);Dalvik/2.1.0 (Linux; U; Android 13; PJZ110 Build/TP1A.220905.001)";
@@ -10,6 +15,7 @@ const API: &str = "https://music.163.com";
 pub struct Client {
     http: reqwest::Client,
     cookies: Mutex<HashMap<String, String>>,
+    gate: Mutex<Instant>,
 }
 
 impl Client {
@@ -20,6 +26,21 @@ impl Client {
                 .build()
                 .expect("http client"),
             cookies: Mutex::new(HashMap::new()),
+            gate: Mutex::new(Instant::now()),
+        }
+    }
+
+    /// 全局限速：所有请求排队，保证相邻两次之间至少 MIN_GAP
+    async fn wait_gate(&self) {
+        let sleep_for = {
+            let mut g = self.gate.lock().unwrap();
+            let now = Instant::now();
+            let slot = if *g + MIN_GAP > now { *g + MIN_GAP } else { now };
+            *g = slot;
+            slot.saturating_duration_since(now)
+        };
+        if !sleep_for.is_zero() {
+            tokio::time::sleep(sleep_for).await;
         }
     }
 
@@ -62,18 +83,40 @@ impl Client {
     pub async fn weapi(&self, path: &str, body: Value) -> Result<Value, String> {
         let form = crypto::weapi_body(&body);
         let ck = self.cookie_header();
-        let mut req = self
-            .http
-            .post(format!("{}{}", API, path))
-            .header(reqwest::header::USER_AGENT, UA_WEB)
-            .header(reqwest::header::REFERER, "https://music.163.com/")
-            .form(&form);
-        if !ck.is_empty() {
-            req = req.header(reqwest::header::COOKIE, ck);
+        let mut last_err = String::from("请求失败");
+        for attempt in 0..=RETRIES {
+            self.wait_gate().await;
+            let mut req = self
+                .http
+                .post(format!("{}{}", API, path))
+                .header(reqwest::header::USER_AGENT, UA_WEB)
+                .header(reqwest::header::REFERER, "https://music.163.com/")
+                .form(&form);
+            if !ck.is_empty() {
+                req = req.header(reqwest::header::COOKIE, ck.clone());
+            }
+            match req.send().await {
+                Ok(resp) => {
+                    self.store_set_cookie(&resp);
+                    let status = resp.status();
+                    match resp.json::<Value>().await {
+                        Ok(v) => {
+                            let code = v["code"].as_i64().unwrap_or(200);
+                            if code == 200 {
+                                return Ok(v);
+                            }
+                            last_err = format!("接口返回 {} {}", code, v["message"].as_str().unwrap_or(""));
+                        }
+                        Err(e) => last_err = format!("HTTP {} 解析失败 {}", status.as_u16(), e),
+                    }
+                }
+                Err(e) => last_err = e.to_string(),
+            }
+            if attempt < RETRIES {
+                tokio::time::sleep(Duration::from_millis(700 * (attempt as u64 + 1))).await;
+            }
         }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        self.store_set_cookie(&resp);
-        resp.json::<Value>().await.map_err(|e| e.to_string())
+        Err(last_err)
     }
 
     pub async fn eapi(&self, short: &str, body: Value) -> Result<Value, String> {
@@ -90,17 +133,33 @@ impl Client {
         } else {
             format!("{}; os=android; appver=8.9.70; osver=13", ck)
         };
-        let resp = self
-            .http
-            .post(format!("{}/eapi{}", API, short))
-            .header(reqwest::header::USER_AGENT, UA_APP)
-            .header(reqwest::header::COOKIE, cookie)
-            .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-            .body(format!("params={}", params))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        self.store_set_cookie(&resp);
-        resp.json::<Value>().await.map_err(|e| e.to_string())
+        let mut last_err = String::from("请求失败");
+        for attempt in 0..=RETRIES {
+            self.wait_gate().await;
+            let send = self
+                .http
+                .post(format!("{}/eapi{}", API, short))
+                .header(reqwest::header::USER_AGENT, UA_APP)
+                .header(reqwest::header::COOKIE, cookie.clone())
+                .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(format!("params={}", params))
+                .send()
+                .await;
+            match send {
+                Ok(resp) => {
+                    self.store_set_cookie(&resp);
+                    let status = resp.status();
+                    match resp.json::<Value>().await {
+                        Ok(v) => return Ok(v),
+                        Err(e) => last_err = format!("HTTP {} 解析失败 {}", status.as_u16(), e),
+                    }
+                }
+                Err(e) => last_err = e.to_string(),
+            }
+            if attempt < RETRIES {
+                tokio::time::sleep(Duration::from_millis(700 * (attempt as u64 + 1))).await;
+            }
+        }
+        Err(last_err)
     }
 }

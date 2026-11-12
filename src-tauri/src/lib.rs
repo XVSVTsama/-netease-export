@@ -131,7 +131,7 @@ async fn playlists(state: State<'_, AppState>, uid: i64) -> Result<Value, String
 
 #[tauri::command]
 async fn playlist_detail(state: State<'_, AppState>, id: i64) -> Result<Value, String> {
-    api::playlist_detail(&state.client, id).await
+    api::playlist_detail(&state.client, id, true).await
 }
 
 #[tauri::command]
@@ -194,7 +194,7 @@ async fn export_album(app: tauri::AppHandle, state: State<'_, AppState>, id: i64
 /// 导出歌单：format = csv | md，返回保存路径列表
 #[tauri::command]
 async fn export_playlist(app: tauri::AppHandle, state: State<'_, AppState>, id: i64, format: String) -> Result<Value, String> {
-    let d = api::playlist_detail(&state.client, id).await?;
+    let d = api::playlist_detail(&state.client, id, true).await?;
     let content = if format == "md" { to_md(&d) } else { to_csv(&d) };
     let name = sanitize(d["name"].as_str().unwrap_or("playlist"));
     let ext = if format == "md" { "md" } else { "csv" };
@@ -404,7 +404,7 @@ async fn stage_one(app: tauri::AppHandle, state: State<'_, AppState>, kind: Stri
     let d = if kind == "al" {
         api::album_detail(&state.client, id).await?
     } else {
-        api::playlist_detail(&state.client, id).await?
+        api::playlist_detail(&state.client, id, false).await?
     };
     let dir = stage_dir(&app, &kind)?;
     fs::write(dir.join(format!("{}.json", id)), d.to_string()).map_err(|e| e.to_string())?;
@@ -413,6 +413,77 @@ async fn stage_one(app: tauri::AppHandle, state: State<'_, AppState>, kind: Stri
         "name": d["name"].clone(),
         "count": d["count"].as_i64().unwrap_or(0),
         "stats": d["stats"].clone()
+    }))
+}
+
+/// 已同步到暂存区的歌单 / 专辑 ID
+#[tauri::command]
+fn stage_ids(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
+    let dir = stage_dir(&app, &kind)?;
+    let ids: Vec<i64> = read_stage(&dir).iter()
+        .filter_map(|(p, _)| p.file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse::<i64>().ok()))
+        .collect();
+    Ok(serde_json::json!({ "ids": ids }))
+}
+
+/// 分批补厂牌：把暂存区里缺厂牌的专辑按 limit 张/次补齐，回写暂存文件
+#[tauri::command]
+async fn fill_companies(app: tauri::AppHandle, state: State<'_, AppState>, kind: String, limit: usize) -> Result<Value, String> {
+    let dir = stage_dir(&app, &kind)?;
+    let files = read_stage(&dir);
+    let mut need: Vec<i64> = Vec::new();
+    let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    for (_, d) in &files {
+        if let Some(rows) = d["rows"].as_array() {
+            for r in rows {
+                let empty = r["company"].as_str().map(|s| s.is_empty()).unwrap_or(true);
+                if empty {
+                    if let Some(aid) = r["alId"].as_i64() {
+                        if aid > 0 && seen.insert(aid) { need.push(aid); }
+                    }
+                }
+            }
+        }
+    }
+    let remaining_total = need.len();
+    if need.len() > limit { need.truncate(limit); }
+    let found = api::fill_companies(&state.client, &need).await;
+
+    let mut updated = 0usize;
+    for (p, mut d) in files {
+        let mut changed = false;
+        if let Some(rows) = d["rows"].as_array_mut() {
+            for r in rows {
+                if let Some(aid) = r["alId"].as_i64() {
+                    if let Some(cmp) = found.get(&aid) {
+                        if !cmp.is_empty() && r["company"].as_str().unwrap_or("").is_empty() {
+                            r["company"] = serde_json::json!(cmp);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+        if changed {
+            updated += 1;
+            let _ = fs::write(&p, d.to_string());
+        }
+    }
+
+    // 缓存落盘，下次启动直接命中
+    if let Ok(dir_app) = app.path().app_data_dir() {
+        let snap = api::companies_snapshot();
+        let map: serde_json::Map<String, Value> = snap.into_iter()
+            .map(|(k, v)| (k.to_string(), Value::String(v))).collect();
+        let _ = fs::write(dir_app.join("companies.json"), Value::Object(map).to_string());
+    }
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "checked": need.len(),
+        "found": found.len(),
+        "updated": updated,
+        "remaining": remaining_total.saturating_sub(need.len())
     }))
 }
 
@@ -521,6 +592,16 @@ pub fn run() {
                         if !saved.trim().is_empty() { client.set_cookie(&saved); }
                     }
                 }
+                if let Ok(dir) = handle.path().app_data_dir() {
+                    if let Ok(t) = fs::read_to_string(dir.join("companies.json")) {
+                        if let Ok(Value::Object(m)) = serde_json::from_str::<Value>(&t) {
+                            let map: std::collections::HashMap<i64, String> = m.into_iter()
+                                .filter_map(|(k, v)| k.parse::<i64>().ok().map(|i| (i, v.as_str().unwrap_or("").to_string())))
+                                .collect();
+                            api::companies_load(map);
+                        }
+                    }
+                }
                 Ok(())
             }
         })
@@ -530,7 +611,7 @@ pub fn run() {
             login_cookie, login_phone_password, sms_sent, login_phone_captcha,
             login_email, logout, export_playlist, collected_albums, play_record, save_text,
             special_items, export_special, zip_exports, album_detail, export_album,
-            stage_one, stage_stats, tidy, check_exports
+            stage_one, stage_stats, stage_ids, fill_companies, tidy, check_exports
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

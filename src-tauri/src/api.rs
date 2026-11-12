@@ -141,8 +141,48 @@ fn song_of_album(s: &Value) -> (String, String, String, i64, i64, i64) {
     (name, ar, al_name, al_id, dur, if ncr.is_empty() { 0 } else { 1 })
 }
 
+/// 厂牌缓存：专辑 ID → 发行公司，进程内共享，跨歌单复用
+fn company_cache() -> &'static std::sync::Mutex<HashMap<i64, String>> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<HashMap<i64, String>>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+pub fn companies_snapshot() -> HashMap<i64, String> {
+    company_cache().lock().unwrap().clone()
+}
+
+pub fn companies_load(map: HashMap<i64, String>) {
+    let mut c = company_cache().lock().unwrap();
+    for (k, v) in map { c.insert(k, v); }
+}
+
+/// 批量补厂牌（并发 4，实际速率由 Client 的全局限速控制）
+pub async fn fill_companies(c: &Client, ids: &[i64]) -> HashMap<i64, String> {
+    let mut out = HashMap::new();
+    for chunk in ids.chunks(4) {
+        let futs = chunk.iter().map(|aid| {
+            let c = c;
+            let aid = *aid;
+            async move {
+                let v = c.weapi(&format!("/weapi/v1/album/{}", aid), json!({})).await.ok();
+                let company = v.as_ref()
+                    .and_then(|x| x["album"]["company"].as_str())
+                    .unwrap_or("").to_string();
+                (aid, company, v.is_some())
+            }
+        });
+        for (aid, company, ok) in join_all(futs).await {
+            if ok {
+                company_cache().lock().unwrap().insert(aid, company.clone());
+                out.insert(aid, company);
+            }
+        }
+    }
+    out
+}
+
 /// 歌单详情：曲目 + 专辑信息（含厂牌）
-pub async fn playlist_detail(c: &Client, id: i64) -> Result<Value, String> {
+pub async fn playlist_detail(c: &Client, id: i64, with_company: bool) -> Result<Value, String> {
     let r = c.eapi("/v6/playlist/detail", json!({ "id": id.to_string(), "n": 100000, "s": 8, "t": 0 })).await?;
     if r["code"].as_i64() != Some(200) {
         return Err(format!("拉取歌单失败: {}", r["message"].as_str().unwrap_or("未知")));
@@ -182,23 +222,18 @@ pub async fn playlist_detail(c: &Client, id: i64) -> Result<Value, String> {
         }));
     }
 
-    // 厂牌：按专辑去重后查询（并发 6）
+    // 厂牌：先用缓存；同步阶段不查（with_company = false），整理阶段再分批补齐
     let mut companies: HashMap<i64, String> = HashMap::new();
-    for chunk in album_ids.chunks(6) {
-        let futs = chunk.iter().map(|aid| {
-            let c = c;
-            let aid = *aid;
-            async move {
-                let v = c.weapi(&format!("/weapi/v1/album/{}", aid), json!({})).await.ok();
-                let company = v.as_ref()
-                    .and_then(|x| x["album"]["company"].as_str())
-                    .unwrap_or("").to_string();
-                (aid, company)
-            }
-        });
-        for (aid, company) in join_all(futs).await {
-            companies.insert(aid, company);
+    {
+        let cache = company_cache().lock().unwrap();
+        for aid in album_ids.iter() {
+            if let Some(v) = cache.get(aid) { companies.insert(*aid, v.clone()); }
         }
+    }
+    if with_company {
+        let need: Vec<i64> = album_ids.iter().filter(|a| !companies.contains_key(a)).cloned().collect();
+        let filled = fill_companies(c, &need).await;
+        for (aid, company) in filled { companies.insert(aid, company); }
     }
     for row in rows.iter_mut() {
         if let Some(aid) = row["alId"].as_i64() {

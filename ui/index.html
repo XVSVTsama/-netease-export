@@ -144,10 +144,9 @@
       <h2>收藏专辑<span class="count" id="alCount"></span></h2>
       <input type="search" id="aq" placeholder="搜索专辑名 / 艺人 / 厂牌" autocomplete="off">
       <div class="spacer"></div>
-      <div class="actions row3">
+      <div class="actions">
         <button class="btn soft" id="btnReloadAlbums">刷新</button>
         <button class="btn" id="btnAlbumCsv2">导出清单</button>
-        <button class="btn" id="btnAlbumZipHint">说明</button>
       </div>
       <div class="list" id="alist" style="margin-top:12px"><div class="empty">点上方刷新加载</div></div>
     </section>
@@ -183,10 +182,9 @@
 
     <section class="section">
       <h2>收藏歌单<span class="count" id="favMeta2"></span></h2>
-      <div class="actions row3">
+      <div class="actions">
         <button class="btn soft" id="btnFavRender">刷新</button>
         <button class="btn" id="btnFavCsv">导出 CSV</button>
-        <button class="btn" id="btnFavZip">说明</button>
       </div>
       <div class="list" id="favlist" style="margin-top:12px"><div class="empty">暂无</div></div>
       <div class="hint" id="favState"></div>
@@ -198,10 +196,9 @@
         <button data-r="all" class="on">全部时间</button>
         <button data-r="week">最近一周</button>
       </div>
-      <div class="actions row3">
+      <div class="actions">
         <button class="btn soft" id="btnRankLoad">加载</button>
         <button class="btn" id="btnRankCsv">导出 CSV</button>
-        <button class="btn" id="btnRankZero">—</button>
       </div>
       <div class="list" id="ranking" style="margin-top:12px"><div class="empty">点上方加载</div></div>
       <div class="hint" id="rankState"></div>
@@ -212,7 +209,7 @@
       <div class="hint">
         导出文件写入 <code>/sdcard/Download/网易云导出</code>，同时在应用私有目录留一份。<br>
         本应用只导出公开的歌单信息与曲目元数据，不播放、不下载音频，也不绕过任何付费或版权限制。<br>
-        版本 <span id="ver">1.4.4</span>
+        版本 <span id="ver">1.4.5</span>
       </div>
     </section>
   </div>
@@ -638,16 +635,30 @@ function scopeList(kind) {
 async function syncScope(kind) {
   if (kind === 'al') { if (!ALBUMS.length) await loadAlbums(); }
   else if (!PLAYLISTS.length) await loadPlaylists();
-  const list = scopeList(kind);
-  if (!list.length) { setBatch('没有可同步的内容'); return; }
+  const all = scopeList(kind);
+  if (!all.length) { setBatch('没有可同步的内容'); return; }
+
+  let synced = new Set();
+  try { const r = await inv('stage_ids', { kind }); synced = new Set(r.ids || []); } catch (e) {}
+  const list = all.filter(p => !synced.has(p.id));
+  const skipped = all.length - list.length;
+  if (!list.length) {
+    clearLog(); setJob(false, '已是最新', 'ok');
+    setBatch('已全部同步：' + all.length + ' 项，直接点「整理」生成文档');
+    setMeta([all.length + ' 项已同步']);
+    return;
+  }
+
   batchStop = false;
   let ok = 0, fail = 0, songs = 0;
+  const reasons = new Map();
   const t0 = Date.now();
   clearLog();
   setJob(true, '同步 · ' + KIND_NAME[kind]);
-  setMeta(['0/' + list.length, '0%', '准备中…']);
+  setMeta(['0/' + list.length, '0%', '准备中…', skipped ? '跳过已同步 ' + skipped : '']);
   scrollToTask();
   $('batchState').onclick = () => { batchStop = true; setBatch('正在停止…'); };
+
   for (let i = 0; i < list.length; i++) {
     if (batchStop) break;
     const p = list[i];
@@ -663,22 +674,36 @@ async function syncScope(kind) {
       i > 0 ? (1 / per).toFixed(1) + ' 项/秒' : '',
       '成功 ' + ok + (fail ? ' · 失败 ' + fail : ''),
     ]);
+
     const t1 = Date.now();
-    try {
-      const r = await inv('stage_one', { kind, id: p.id });
-      const c = (r && r.count) || 0;
+    let got = null, err = '';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { got = await inv('stage_one', { kind, id: p.id }); break; }
+      catch (e) {
+        err = String(e);
+        if (attempt === 0) await new Promise(r => setTimeout(r, 1200));
+      }
+    }
+    if (got) {
+      const c = got.count || 0;
       songs += c; ok++;
       pushLog(true, p.name || String(p.id), c + ' 首 · ' + ((Date.now() - t1) / 1000).toFixed(1) + 's');
-    } catch (e) {
+    } else {
       fail++;
-      pushLog(false, p.name || String(p.id), String(e).slice(0, 40));
+      const short = err.replace(/^Error:\s*/, '').slice(0, 60) || '未知错误';
+      reasons.set(short, (reasons.get(short) || 0) + 1);
+      pushLog(false, p.name || String(p.id), short);
     }
   }
+
   $('batchState').onclick = null;
   const total = (Date.now() - t0) / 1000;
   try { SCOPE[kind] = await inv('stage_stats', { kind }); renderHomeStats(); } catch (e) {}
-  setBatch((batchStop ? '已停止：' : '同步完成：') + ok + ' 项，' + songs + ' 首' +
-    (fail ? '，失败 ' + fail + ' 项' : '') + '，用时 ' + fmtSec(total), 100);
+  const topReason = [...reasons.entries()].sort((a, b) => b[1] - a[1])[0];
+  setBatch((batchStop ? '已停止：' : '同步完成：') + ok + ' 项成功' +
+    (fail ? '，' + fail + ' 项失败' : '') + (skipped ? '，跳过已同步 ' + skipped : '') +
+    '，' + songs + ' 首，用时 ' + fmtSec(total) +
+    (topReason ? '。失败原因：' + topReason[0] + '（' + topReason[1] + ' 项）' : ''));
   setMeta([ok + ' 项成功', fail ? fail + ' 项失败' : '', songs + ' 首', '净用时 ' + fmtSec(total)]);
   setJob(false, batchStop ? '已停止' : '同步完成', fail ? 'err' : 'ok');
 }
@@ -686,18 +711,48 @@ async function syncScope(kind) {
 async function tidyScope(kind) {
   clearLog();
   setJob(true, '整理 · ' + KIND_NAME[kind]);
-  setBatch('正在生成文档…');
-  setMeta(['读取暂存区', '生成 CSV + MD']);
+  setMeta(['准备']);
+  batchStop = false;
+  scrollToTask();
+  $('batchState').onclick = () => { batchStop = true; setBatch('正在停止…'); };
   const t0 = Date.now();
+  let filled = 0, updated = 0;
   try {
+    // 1) 分批补厂牌（每批 300 张专辑，命中缓存不重复查）
+    for (let i = 0; i < 80; i++) {
+      if (batchStop) break;
+      const r = await inv('fill_companies', { kind, limit: 300 });
+      filled += r.found || 0;
+      updated += r.updated || 0;
+      setBatch('补齐厂牌 ' + (i + 1) + ' 批 · 已补 ' + filled + ' 张专辑 · 回写 ' + updated + ' 个' +
+        (r.remaining ? ' · 还剩 ' + r.remaining + ' 张 · 点击停止' : ' · 完成'));
+      setMeta(['已补 ' + filled + ' 张专辑', r.remaining ? '剩余 ' + r.remaining + ' 张' : '厂牌齐全', '回写 ' + updated + ' 个']);
+      if (!r.remaining) break;
+    }
+    $('batchState').onclick = null;
+
+    // 2) 生成文档
+    setBatch('生成文档…');
+    setMeta(['生成 CSV + MD']);
     const r = await inv('tidy', { kind });
     const sec = (Date.now() - t0) / 1000;
+    if (!r.items) {
+      setBatch('暂存区还是空的：先点「同步」抓数据');
+      setMeta(['没有可整理的内容']);
+      setJob(false, '无数据', 'err');
+      return;
+    }
+    pushLog(true, KIND_NAME[kind], r.items + ' 项 → ' + (r.sub || '导出目录'));
     if (r.failed) pushLog(false, KIND_NAME[kind], r.failed + ' 项写入失败');
-    else pushLog(true, KIND_NAME[kind], r.items + ' 项 → ' + (r.sub || '导出目录'));
-    setBatch('整理完成：' + r.items + ' 个，' + r.files + ' 个文件，' + r.songs + ' 首 → ' + (r.sub || '导出目录'));
+    setBatch('整理完成：' + r.items + ' 个，' + r.files + ' 个文件，' + r.songs + ' 首 → ' + (r.sub || '导出目录') +
+      (filled ? '（补厂牌 ' + filled + ' 张）' : ''));
     setMeta([r.items + ' 项', r.files + ' 个文件', r.songs + ' 首', '用时 ' + fmtSec(sec)]);
     setJob(false, '整理完成', r.failed ? 'err' : 'ok');
-  } catch (e) { setBatch('整理失败：' + e); setJob(false, '整理失败', 'err'); }
+  } catch (e) {
+    $('batchState').onclick = null;
+    setBatch('整理失败：' + e);
+    setJob(false, '整理失败', 'err');
+  }
 }
 
 async function checkScope(kind) {
@@ -783,7 +838,6 @@ async function exportAlbums() {
 
 $('btnAlbumCsv2').onclick = exportAlbums;
 $('btnReloadAlbums').onclick = loadAlbums;
-$('btnAlbumZipHint').onclick = () => { $('zipState').textContent = '导出专辑曲目：先点开某张专辑，再用「导出 CSV / MD」'; showView('home'); };
 $('aq').oninput = e => { AL_Q = e.target.value.trim(); renderAlbums(); };
 
 /* ---------- 收藏歌单 ---------- */
@@ -813,7 +867,6 @@ async function exportFavlist() {
 }
 $('btnFavRender').onclick = renderFavlist;
 $('btnFavCsv').onclick = exportFavlist;
-$('btnFavZip').onclick = () => setHint('favState', '收藏歌单只导出清单，曲目请点进歌单后导出');
 
 /* ---------- 听歌排行 ---------- */
 async function loadRank(week) {
@@ -846,7 +899,6 @@ async function exportRank() {
 document.querySelectorAll('#rankSeg button').forEach(b => b.onclick = () => loadRank(b.dataset.r === 'week'));
 $('btnRankLoad').onclick = () => loadRank(RANK_WEEK);
 $('btnRankCsv').onclick = exportRank;
-$('btnRankZero').onclick = () => { RANK = []; $('ranking').innerHTML = '<div class="empty">点上方加载</div>'; setHint('rankState', ''); };
 
 /* ---------- 专项 ---------- */
 $('btnSpecialList').onclick = async () => {
