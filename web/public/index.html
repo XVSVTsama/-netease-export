@@ -6,6 +6,7 @@
 <title>网易云导出</title>
 <link rel="stylesheet" href="/fonts.css">
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/desk.css">
 </head>
 <body data-page="home">
 <header class="top">
@@ -21,6 +22,9 @@
   <div class="accs" id="accs"></div>
 
   <div class="banner" id="banner" style="display:none"></div>
+
+  <div class="cols">
+  <div class="col">
 
   <section class="section">
     <h2>我的创建<span class="count" id="createdMeta"></span></h2>
@@ -50,6 +54,9 @@
     </div>
   </section>
 
+  </div>
+  <div class="col">
+
   <section class="section">
     <h2>任务</h2>
     <div class="banner" id="pendingNote" style="display:none;background:var(--accent-soft);color:var(--accent);border:0"></div>
@@ -64,9 +71,8 @@
       <a class="btn" href="/zip">下载压缩包</a>
     </div>
     <div class="hint" id="zipHint"></div>
-    <div class="actions" style="margin-top:10px">
-      <a class="btn small" href="/zip">下载压缩包</a>
-      <a class="btn small" href="/settings">更多设置</a>
+    <div class="actions" style="margin-top:10px;grid-template-columns:1fr">
+      <a class="btn" href="/settings">更多设置</a>
     </div>
   </section>
 
@@ -74,6 +80,9 @@
     <h2>最近任务</h2>
     <div class="list" id="hist"><div class="empty">暂无记录</div></div>
   </section>
+
+  </div>
+  </div>
 </main>
 
 <nav class="tabs">

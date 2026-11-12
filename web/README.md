@@ -17,7 +17,8 @@ web/
     ├── settings.html   账号、导出目录、代理设置
     ├── docs.html       使用说明与字段说明
     ├── app.js          前端逻辑（约 900 行，无框架）
-    └── style.css       样式
+    ├── style.css       设计令牌与组件样式（颜色、圆角、按钮、卡片），两端共用
+    └── desk.css        仅 ≥900px 生效的桌面布局（左侧导航、概览双栏、列表两列）
 ```
 
 脚本侧的抓取与整理逻辑在仓库根目录的 `*.mjs`（`export*.mjs`、`sync.mjs`、`fav.mjs`、`cpl.mjs`、`merge.mjs`、`check.mjs`、`stage.mjs`、`build.mjs`），面板通过 `runner.mjs` 串起任务链。
@@ -58,6 +59,8 @@ npm run panel             # 同上，等价写法
 | `NC_ROOT` | 当前工作目录 | 数据根目录（`out2/`、`cookie.txt`、`accounts.json` 所在） |
 | `NC_DEST` | `NC_ROOT/导出` | 默认发布目录 |
 | `NC_STAGE` | 空 | `1` 时整理脚本写 `out2/staging` 暂存区 |
+
+`desk.css` 不定义任何颜色或外观，只重排结构；窄屏下完全不生效，所以同一份前端在手机浏览器与桌面上各用各的布局。
 
 注意：数据目录与代码目录是分开的。`web/server.mjs` 里的 `CODE` 指向代码所在目录（静态资源、字体、脚本都按它解析），`ROOT` 指向数据目录，因此可以在任意位置 `cd` 到数据目录再 `node <代码目录>/web/server.mjs`。
 

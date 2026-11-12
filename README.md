@@ -4,7 +4,7 @@
 
 只做导出与整理：不提供播放、不代理音频、不绕过任何付费或版权限制。
 
-当前版本：**1.4.1**（Android 界面与 PC 面板统一，共用同一份样式与卡片布局）
+当前版本：**1.4.2**（PC 桌面独立布局 + Android 面板风格界面，两端共用同一套设计令牌）
 
 ---
 
@@ -131,12 +131,24 @@ npx tauri android build --apk --target aarch64
 
 界面样式与 PC 面板共用一份：`ui/style.css` 是 `web/public/style.css` 的生成副本，构建前由 `beforeBuildCommand`（`npm run sync:ui`）自动覆盖，不要手改 `ui/style.css`；改样式只改 `web/public/style.css`。`npm run test:ui` 用假 DOM 跑一遍 `ui/index.html` 的脚本，确认没有解析错误、所有按钮都绑定了事件。
 
+### 两端界面：布局独立，美学一致
+
+设计令牌（配色、圆角、字体、按钮与卡片样式）只有一份，在 `web/public/style.css`；布局按屏幕宽度分开：
+
+| 场景 | 布局 | 生效文件 |
+| --- | --- | --- |
+| Android / 手机浏览器（<900px） | 底部 tab、单列上下滚动 | `style.css` |
+| PC 面板与便携版（≥900px） | 左侧固定导航 + 右侧内容区，概览左右分栏，歌单与收藏专辑列表两列卡片 | `style.css` + `desk.css` |
+| Android 原生 | 底部 tab、单列（与手机浏览器同构） | `ui/style.css`（`style.css` 的生成副本） |
+
+`web/public/desk.css` 只在宽屏接管布局，不定义任何颜色或组件外观：它把底部 tab 改成左侧导航、把 `main` 移到导航右侧、把概览的四块内容分成左右两栏（左「我的创建 / 我的收藏」，右「任务 / 最近任务」），并把 `#plist` / `#alist` 排成两列卡片。窄屏下 `.cols` / `.col` 是 `display:contents`，DOM 结构对移动端没有影响。Electron 窗口默认 1240×880、最小 980×640，保证打开即进入桌面布局。
+
 ## 目录
 
 ```
 main.cjs               Electron 主进程（窗口、便携目录、端口选择、启动面板服务）
 web/server.mjs         面板服务端（接口 + 静态资源 + 任务调度）
-web/public/            面板前端
+web/public/            面板前端（style.css 设计令牌 + desk.css 桌面布局）
 web/README.md          面板部署与接口文档
 build.mjs              发布：重建文档 → 打包 zip → 核验 → 原子替换（纯 Node）
 runner.mjs             任务链执行器（直接用当前运行时跑脚本，不经 sh）

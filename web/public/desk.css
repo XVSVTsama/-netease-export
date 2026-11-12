@@ -1,0 +1,77 @@
+/* PC 独立桌面布局（≥900px）
+   与移动端共用 style.css 里的设计令牌（配色、圆角、字体、按钮、卡片），
+   这里只重排结构：底部 tab → 左侧导航，单列 → 双栏。
+   移动端（<900px）完全不受影响；Android 端不加载本文件。 */
+
+/* 两栏容器在窄屏不参与布局，保持移动端原结构 */
+.cols, .col { display: contents; }
+
+@media (min-width: 900px) {
+  body { padding-bottom: 48px; }
+
+  /* ---------- 左侧导航 ---------- */
+  .tabs {
+    position: fixed; top: 0; left: 0; right: auto; bottom: 0;
+    width: 224px; flex-direction: column; justify-content: flex-start;
+    align-items: stretch; gap: 3px; padding: 24px 14px 18px;
+    border-top: 0; border-right: 1px solid var(--line);
+    background: var(--bg); overflow-y: auto;
+  }
+  .tabs::before {
+    content: '网易云导出';
+    font-size: 17px; font-weight: 700; letter-spacing: -.02em;
+    padding: 0 12px 20px; color: var(--text);
+  }
+  .tabs a, .tabs .tab-set {
+    flex: 0 0 auto; flex-direction: row; justify-content: flex-start; align-items: center;
+    gap: 12px; font-size: 14px; font-weight: 500;
+    padding: 11px 13px; border-radius: 12px; text-align: left;
+  }
+  .tabs a .i, .tabs .tab-set .i { font-size: 17px; line-height: 1; width: 20px; text-align: center; }
+  .tabs a:hover, .tabs .tab-set:hover { background: var(--bg-elev); }
+  .tabs a.on, .tabs .tab-set.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+  /* ---------- 内容区 ---------- */
+  body:has(.tabs) header.top,
+  body:has(.tabs) main { margin-left: 224px; }
+  .top {
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    backdrop-filter: saturate(180%) blur(14px);
+  }
+  .top .bar { max-width: 1240px; padding: 22px 34px 8px; }
+  .top h1 { font-size: 28px; }
+  .top .sub { max-width: 1240px; padding: 0 34px 14px; }
+  /* 首页标题与侧栏品牌重复，桌面只留侧栏；顶部收成右侧工具条 */
+  body[data-page="home"] .top .bar { justify-content: flex-end; padding: 16px 34px 4px; }
+  body[data-page="home"] .top h1 { display: none; }
+  body[data-page="home"] .top .sub { padding: 0 34px 12px; font-size: 12.5px; }
+  main { max-width: 1240px; padding: 20px 34px 28px; }
+
+  /* ---------- 概览：左栏「我的」+ 右栏「任务」 ---------- */
+  body[data-page="home"] main > .cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr);
+    gap: 0 30px; align-items: start;
+  }
+  .col { display: flex; flex-direction: column; min-width: 0; }
+  body[data-page="home"] .section { margin: 14px 0; }
+  body[data-page="home"] .stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  body[data-page="home"] .doc { height: 236px; }
+
+  /* ---------- 列表：宽屏两列卡片 ---------- */
+  #plist, #alist {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 10px; background: transparent; overflow: visible;
+  }
+  #plist .row, #alist .row { background: var(--bg-elev); border-radius: 12px; }
+  #plist .row + .row, #alist .row + .row { border-top: 0; }
+  #plist .row:hover, #alist .row:hover { background: var(--accent-soft); }
+  #plist .empty, #alist .empty { grid-column: 1 / -1; }
+
+  /* ---------- 曲目 / 日志 ---------- */
+  .tracks, .doc { max-height: 62vh; }
+
+  /* ---------- 登录页（无侧栏） ---------- */
+  .center { padding: 44px 18px; }
+}
+

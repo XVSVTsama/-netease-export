@@ -91,9 +91,9 @@ function startServer() {
 
 async function createWindow() {
   const win = new BrowserWindow({
-    width: 1120,
-    height: 860,
-    minWidth: 860,
+    width: 1240,
+    height: 880,
+    minWidth: 980,
     minHeight: 640,
     title: `网易云导出 ${pkg.version || ''}`.trim(),
     backgroundColor: '#ffffff',
