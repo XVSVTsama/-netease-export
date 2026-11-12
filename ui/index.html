@@ -181,6 +181,16 @@
     </section>
 
     <section class="section">
+      <h2>导出位置</h2>
+      <input type="search" id="exportDir" placeholder="/storage/emulated/0/Download/网易云导出" autocomplete="off">
+      <div class="actions" style="margin-top:10px">
+        <button class="btn soft" id="btnDirCheck">检测</button>
+        <button class="btn primary" id="btnDirSave">保存</button>
+      </div>
+      <div class="hint" id="dirState">需要「所有文件访问权限」才能写入公共目录</div>
+    </section>
+
+    <section class="section">
       <h2>收藏歌单<span class="count" id="favMeta2"></span></h2>
       <div class="actions">
         <button class="btn soft" id="btnFavRender">刷新</button>
@@ -207,9 +217,10 @@
     <section class="section">
       <h2>关于</h2>
       <div class="hint">
-        导出文件写入 <code>/sdcard/Download/网易云导出</code>，同时在应用私有目录留一份。<br>
+        导出文件写入上面设置的目录（默认 <code>/sdcard/Download/网易云导出</code>），同时在应用私有目录留一份。<br>
+        写入公共目录需要系统「所有文件访问权限」：设置 → 应用 → 网易云导出 → 权限 → 所有文件访问权限。<br>
         本应用只导出公开的歌单信息与曲目元数据，不播放、不下载音频，也不绕过任何付费或版权限制。<br>
-        版本 <span id="ver">1.4.9</span>
+        版本 <span id="ver">—</span>
       </div>
     </section>
   </div>
@@ -336,7 +347,7 @@ function showView(v) {
   if (v === 'browse') renderPlaylistList();
   if (v === 'albums' && !ALBUMS.length) loadAlbums();
   if (v === 'docs') renderSpecial();
-  if (v === 'setting') renderAccStats();
+  if (v === 'setting') { renderAccStats(); loadExportDir(); }
   window.scrollTo(0, 0);
 }
 document.querySelectorAll('.tabs a').forEach(a => a.onclick = e => { e.preventDefault(); showView(a.dataset.v); });
@@ -917,6 +928,31 @@ async function exportRank() {
 document.querySelectorAll('#rankSeg button').forEach(b => b.onclick = () => loadRank(b.dataset.r === 'week'));
 $('btnRankLoad').onclick = () => loadRank(RANK_WEEK);
 $('btnRankCsv').onclick = exportRank;
+
+/* ---------- 导出位置 ---------- */
+async function loadExportDir() {
+  try {
+    const r = await inv('get_export_dir');
+    $('exportDir').value = r.dir || '';
+    setHint('dirState', r.writable
+      ? '当前可写入'
+      : '当前不可写：设置 → 应用 → 网易云导出 → 权限 → 所有文件访问权限');
+  } catch (e) { setHint('dirState', '读取失败：' + e); }
+}
+$('btnDirCheck').onclick = async () => {
+  try {
+    const r = await inv('check_export_dir', { dir: $('exportDir').value.trim() });
+    setHint('dirState', r.writable ? '可写入' : ('不可写：' + (r.message || '检查系统权限')));
+  } catch (e) { setHint('dirState', '检测失败：' + e); }
+};
+$('btnDirSave').onclick = async () => {
+  try {
+    const r = await inv('set_export_dir', { dir: $('exportDir').value.trim() });
+    if (r.ok) setHint('dirState', '已保存并确认可写：' + r.dir);
+    else setHint('dirState', '未保存：' + (r.message || '目录不可写'));
+  } catch (e) { setHint('dirState', '保存失败：' + e); }
+};
+inv('app_version').then(v => { if (v) $('ver').textContent = v; }).catch(() => {});
 
 /* ---------- 专项 ---------- */
 $('btnSpecialList').onclick = async () => {

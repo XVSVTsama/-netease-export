@@ -6,7 +6,7 @@ use client::Client;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -456,12 +456,11 @@ async fn save_text(app: tauri::AppHandle, name: String, content: String) -> Resu
         let p = out.join(&file);
         if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); }
     }
-    for base in ["/storage/emulated/0/Download/网易云导出", "/sdcard/Download/网易云导出"] {
-        let dir = std::path::Path::new(base);
-        if fs::create_dir_all(dir).is_ok() {
-            let p = dir.join(&file);
-            if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); break; }
-        }
+    let base = read_export_dir(&app);
+    let dir = Path::new(&base);
+    if dir_writable(dir).is_ok() {
+        let p = dir.join(&file);
+        if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); }
     }
     if saved.is_empty() { return Err("写入文件失败".into()); }
     Ok(serde_json::json!({ "ok": true, "paths": saved }))
@@ -519,6 +518,81 @@ async fn export_special(app: tauri::AppHandle) -> Result<Value, String> {
     Ok(serde_json::json!({ "ok": true, "paths": paths }))
 }
 
+/* ---------------- 导出位置 ---------------- */
+
+fn default_export_dir() -> String {
+    "/storage/emulated/0/Download/网易云导出".to_string()
+}
+
+fn settings_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("settings.json"))
+}
+
+pub fn read_export_dir(app: &tauri::AppHandle) -> String {
+    settings_path(app)
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| v["exportDir"].as_str().map(|s| s.to_string()))
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(default_export_dir)
+}
+
+fn save_export_dir(app: &tauri::AppHandle, dir: &str) -> Result<(), String> {
+    let p = settings_path(app).ok_or_else(|| "取不到应用目录".to_string())?;
+    if let Some(parent) = p.parent() { let _ = fs::create_dir_all(parent); }
+    let v = serde_json::json!({ "exportDir": dir });
+    fs::write(&p, v.to_string()).map_err(|e| e.to_string())
+}
+
+/// 试写一个临时文件，判断目录到底能不能写
+fn dir_writable(dir: &Path) -> Result<(), String> {
+    if let Err(e) = fs::create_dir_all(dir) {
+        return Err(format!("创建目录失败：{}", e));
+    }
+    let probe = dir.join(".eta_write_test");
+    match fs::write(&probe, b"ok") {
+        Ok(_) => { let _ = fs::remove_file(&probe); Ok(()) }
+        Err(e) => Err(format!("无法写入：{}（多半是没给「所有文件访问权限」）", e)),
+    }
+}
+
+#[tauri::command]
+fn get_export_dir(app: tauri::AppHandle) -> Value {
+    let dir = read_export_dir(&app);
+    let writable = dir_writable(Path::new(&dir)).is_ok();
+    serde_json::json!({ "dir": dir, "writable": writable, "default": default_export_dir() })
+}
+
+#[tauri::command]
+fn set_export_dir(app: tauri::AppHandle, dir: String) -> Result<Value, String> {
+    let d = dir.trim().trim_end_matches('/').to_string();
+    if d.is_empty() { return Err("目录不能为空".into()); }
+    if !d.starts_with('/') {
+        return Err("请填绝对路径，例如 /storage/emulated/0/Download/网易云导出".into());
+    }
+    match dir_writable(Path::new(&d)) {
+        Ok(()) => {
+            save_export_dir(&app, &d)?;
+            Ok(serde_json::json!({ "ok": true, "dir": d, "writable": true }))
+        }
+        Err(e) => Ok(serde_json::json!({ "ok": false, "dir": d, "writable": false, "message": e })),
+    }
+}
+
+#[tauri::command]
+fn app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
+#[tauri::command]
+fn check_export_dir(dir: String) -> Value {
+    let d = dir.trim().trim_end_matches('/').to_string();
+    match dir_writable(Path::new(&d)) {
+        Ok(()) => serde_json::json!({ "ok": true, "writable": true }),
+        Err(e) => serde_json::json!({ "ok": false, "writable": false, "message": e }),
+    }
+}
+
 fn write_both(app: &tauri::AppHandle, name: &str, content: &str) -> (Vec<String>, ()) {
     let file = sanitize_path(name);
     let mut saved: Vec<String> = Vec::new();
@@ -528,12 +602,11 @@ fn write_both(app: &tauri::AppHandle, name: &str, content: &str) -> (Vec<String>
         let p = out.join(&file);
         if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); }
     }
-    for base in ["/storage/emulated/0/Download/网易云导出", "/sdcard/Download/网易云导出"] {
-        let dir = std::path::Path::new(base);
-        if fs::create_dir_all(dir).is_ok() {
-            let p = dir.join(&file);
-            if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); break; }
-        }
+    let base = read_export_dir(app);
+    let dir = Path::new(&base);
+    if dir_writable(dir).is_ok() {
+        let p = dir.join(&file);
+        if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); }
     }
     (saved, ())
 }
@@ -575,8 +648,8 @@ async fn zip_exports(app: tauri::AppHandle) -> Result<Value, String> {
     let size = fs::metadata(&zip_path).map(|m| m.len()).unwrap_or(0);
     // 复制到公共下载目录
     let mut public = String::new();
-    for base in ["/storage/emulated/0/Download/网易云导出", "/sdcard/Download/网易云导出"] {
-        let d = std::path::Path::new(base);
+    for base in [read_export_dir(&app), default_export_dir()] {
+        let d = std::path::Path::new(&base);
         if fs::create_dir_all(d).is_ok() {
             let p = d.join("网易云导出.zip");
             if fs::copy(&zip_path, &p).is_ok() { public = p.to_string_lossy().to_string(); break; }
@@ -1157,7 +1230,8 @@ pub fn run() {
             login_email, logout, export_playlist, collected_albums, play_record, save_text,
             special_items, export_special, zip_exports, album_detail, export_album,
             stage_one, stage_stats, stage_ids, fill_companies, tidy, check_exports,
-            job_start, job_status, job_stop, copy_log
+            job_start, job_status, job_stop, copy_log,
+            get_export_dir, set_export_dir, check_export_dir, app_version
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
