@@ -667,12 +667,35 @@ mod android_fs {
 
     /// 取 MainActivity 实例：ndk_context 只给 Application，要自己从静态字段拿
     fn activity<'a>(env: &mut jni::JNIEnv<'a>) -> Result<JObject<'a>, String> {
+        // FindClass 在这些线程上只会查 bootstrap classloader，拿不到应用类，
+        // 必须用 Application 的 ClassLoader 走 Class.forName
+        let ctx = APP_CONTEXT.get().ok_or_else(|| "取不到 Context".to_string())?;
+        let loader = env
+            .call_method(ctx.as_obj(), "getClassLoader", "()Ljava/lang/ClassLoader;", &[])
+            .map_err(|e| format!("取 ClassLoader 失败: {}", e))?
+            .l()
+            .map_err(|e| e.to_string())?;
+        let name = env
+            .new_string("app.xvsvt.netease.export.MainActivity")
+            .map_err(|e| e.to_string())?;
+        let name_obj = JObject::from(name);
         let cls = env
-            .find_class("app/xvsvt/netease/export/MainActivity")
-            .map_err(|e| format!("找不到 MainActivity: {}", e))?;
+            .call_static_method(
+                "java/lang/Class",
+                "forName",
+                "(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;",
+                &[
+                    JValue::Object(&name_obj),
+                    JValue::Bool(0),
+                    JValue::Object(&loader),
+                ],
+            )
+            .map_err(|e| format!("找不到 MainActivity: {}", e))?
+            .l()
+            .map_err(|e| e.to_string())?;
         let inst = env
             .get_static_field(
-                cls,
+                &cls,
                 "etaInstance",
                 "Lapp/xvsvt/netease/export/MainActivity;",
             )
