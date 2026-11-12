@@ -1181,10 +1181,20 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
     let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
     let mut public_files = 0usize;
     let mut extras_total = 0i64;
+    let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for (_, d) in read_stage(&dir) {
-        let name = sanitize(d["name"].as_str().unwrap_or("未命名"));
         let raw_name = d["name"].as_str().unwrap_or("未命名");
+        // 清洗后的名字可能撞车（控制符都成了 _，或截断到 50 字），撞了就加序号，别互相覆盖
+        let mut name = sanitize(raw_name);
+        if !used_names.insert(name.clone()) {
+            let mut i = 2usize;
+            loop {
+                let cand = format!("{}~{}", name, i);
+                if used_names.insert(cand.clone()) { name = cand; break; }
+                i += 1;
+            }
+        }
         let id = d["id"].as_i64().unwrap_or(0);
         let rows: Vec<Value> = d["rows"].as_array().cloned().unwrap_or_default();
         let extras = load_extras(app, kind, id);
