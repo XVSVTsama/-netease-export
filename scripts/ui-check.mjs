@@ -36,7 +36,6 @@ const groups = {
   '#loginTabs button': [mkBtn({ m: 'qr' }), mkBtn({ m: 'phone' }), mkBtn({ m: 'email' }), mkBtn({ m: 'cookie' })],
   '#plFilter .chip': [mkBtn({ f: 'all' }), mkBtn({ f: 'mine' }), mkBtn({ f: 'fav' })],
   '#dispModes button': [mkBtn({ d: 'raw' }), mkBtn({ d: 'mark' })],
-  '#rankSeg button': [mkBtn({ r: 'all' }), mkBtn({ r: 'week' })],
   '.tabs a': [mkBtn({ v: 'home' }), mkBtn({ v: 'browse' }), mkBtn({ v: 'albums' }), mkBtn({ v: 'docs' }), mkBtn({ v: 'setting' })],
 };
 

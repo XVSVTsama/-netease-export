@@ -208,20 +208,6 @@
     </section>
 
     <section class="section">
-      <h2>听歌排行<span class="count" id="rankMeta"></span></h2>
-      <div class="seg" id="rankSeg">
-        <button data-r="all" class="on">全部时间</button>
-        <button data-r="week">最近一周</button>
-      </div>
-      <div class="actions">
-        <button class="btn soft" id="btnRankLoad">加载</button>
-        <button class="btn" id="btnRankCsv">导出 CSV</button>
-      </div>
-      <div class="list" id="ranking" style="margin-top:12px"><div class="empty">点上方加载</div></div>
-      <div class="hint" id="rankState"></div>
-    </section>
-
-    <section class="section">
       <h2>关于</h2>
       <div class="hint">
         导出文件写入上面设置的目录（默认 <code>/sdcard/Download/网易云导出</code>），同时在应用私有目录留一份。<br>
@@ -280,7 +266,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let uid = 0, nickname = '', pollTimer = null, busy = false;
-let PLAYLISTS = [], ALBUMS = [], RANK = [], FAVLIST = [], RANK_WEEK = false;
+let PLAYLISTS = [], ALBUMS = [], FAVLIST = [];
 let currentView = 'home', detailKind = '', detailId = 0, detailRows = [], detailPage = 0;
 let DISP = 'raw', PRIVACY = false;
 let ACC = { down: 0, otherVersion: 0, special: 0, nonLatin: 0, total: 0, playlists: 0 };
@@ -950,38 +936,6 @@ $('btnPlCsv').onclick = async () => {
   } catch (e) { setHint('plState', '导出失败：' + e); }
 };
 
-/* ---------- 听歌排行 ---------- */
-async function loadRank(week) {
-  RANK_WEEK = week;
-  document.querySelectorAll('#rankSeg button').forEach(b => b.classList.toggle('on', (b.dataset.r === 'week') === week));
-  $('ranking').innerHTML = '<div class="empty">加载中…</div>';
-  try {
-    const r = await inv('play_record', { uid, week });
-    RANK = r.items || [];
-    $('ranking').innerHTML = RANK.length
-      ? RANK.map(x => '<div class="row"><div class="body"><div class="title">' + x.rank + '. ' + esc(disp(x.name)) + '</div>' +
-        '<div class="meta">' + esc(x.ar) + ' · ' + esc(x.al) + '</div></div>' +
-        '<div class="tail">' + x.playCount + ' 次</div></div>').join('')
-      : '<div class="empty">没有记录</div>';
-    $('rankMeta').textContent = RANK.length ? RANK.length + ' 条' : '';
-    setHint('rankState', '');
-  } catch (e) { $('ranking').innerHTML = '<div class="empty">加载失败：' + esc(e) + '</div>'; }
-}
-
-async function exportRank() {
-  if (!RANK.length) return;
-  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const head = '排名,播放次数,歌名,制作人/团体,专辑,时长\n';
-  const rows = RANK.map(x => [x.rank, x.playCount, q(x.name), q(x.ar), q(x.al), fmtDur(x.dur)].join(',')).join('\n');
-  try {
-    const r = await inv('save_text', { name: '表格/听歌排行_' + (RANK_WEEK ? '最近一周' : '全部时间') + '.csv', content: '\ufeff' + head + rows + '\n' });
-    setHint('rankState', '已导出：' + r.paths.join(' / '));
-  } catch (e) { setHint('rankState', '导出失败：' + e); }
-}
-document.querySelectorAll('#rankSeg button').forEach(b => b.onclick = () => loadRank(b.dataset.r === 'week'));
-$('btnRankLoad').onclick = () => loadRank(RANK_WEEK);
-$('btnRankCsv').onclick = exportRank;
-
 /* ---------- 导出位置 ---------- */
 async function loadExportDir() {
   try {
@@ -1093,7 +1047,7 @@ $('btnSpecialCsv').onclick = async () => {
 /* ---------- 账号操作 ---------- */
 $('btnLogout').onclick = async () => {
   await inv('logout');
-  nickname = ''; uid = 0; PLAYLISTS = []; FAVLIST = []; ALBUMS = []; RANK = [];
+  nickname = ''; uid = 0; PLAYLISTS = []; FAVLIST = []; ALBUMS = [];
   $('loginCard').hidden = false;
   $('sub').textContent = '未登录';
   renderHomeStats(); renderAccStats();
