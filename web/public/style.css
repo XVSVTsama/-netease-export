@@ -218,3 +218,14 @@ input:focus{border-color:var(--accent)}
 .info-sheet .ok{width:100%;padding:14px;border-radius:14px;border:0;background:var(--accent);color:#fff;font-size:15px;font-weight:600}
 
 .row .flags{font-size:11px;color:var(--warn);margin-top:3px;line-height:1.4}
+
+/* 轻量反馈动效：两端共用，只做过渡与按压，不改变布局 */
+.btn{transition:background .16s ease,color .16s ease,transform .12s ease,opacity .16s ease}
+.btn:active{transform:scale(.98)}
+.chip,.mode,.seg button,.tabs a,.tabs .tab-set{transition:background .18s ease,color .18s ease}
+.row{transition:background .18s ease}
+.stat{transition:background .18s ease}
+input[type=search],input[type=text],input[type=password]{transition:border-color .16s ease,background .16s ease}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+}

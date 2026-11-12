@@ -101,8 +101,10 @@
         <strong id="jobName" style="font-size:14px">空闲</strong>
         <span class="pill-status" id="jobState">待命</span>
       </div>
-      <div class="progress"><i id="batchBar"></i></div>
+      <div class="progress" id="pgWrap"><i id="batchBar"></i></div>
+      <div class="job-meta" id="jobMeta"></div>
       <div class="hint" id="batchState">没有正在运行的任务</div>
+      <ul class="job-log" id="jobLog"></ul>
       <div class="actions" style="margin-top:12px">
         <button class="btn" id="btnZip">打包成 zip</button>
         <button class="btn" id="btnSpecial">查看专项</button>
@@ -210,7 +212,7 @@
       <div class="hint">
         导出文件写入 <code>/sdcard/Download/网易云导出</code>，同时在应用私有目录留一份。<br>
         本应用只导出公开的歌单信息与曲目元数据，不播放、不下载音频，也不绕过任何付费或版权限制。<br>
-        版本 <span id="ver">1.4.3</span>
+        版本 <span id="ver">1.4.4</span>
       </div>
     </section>
   </div>
@@ -583,16 +585,50 @@ function accStats(st) {
 
 /* ---------- 同步 / 整理 / 核验 ---------- */
 const KIND_NAME = { pl: '我创建的歌单', plfav: '收藏歌单', al: '收藏专辑' };
+const TASK_BTNS = ['btnSyncPl', 'btnTidyPl', 'btnCheckPl', 'btnSyncFav', 'btnTidyFav', 'btnCheckFav', 'btnSyncAl', 'btnTidyAl', 'btnCheckAl'];
+
+function fmtSec(sec) {
+  const t = Math.max(0, Math.round(sec));
+  if (t < 60) return t + ' 秒';
+  const m = Math.floor(t / 60);
+  if (m < 60) return m + ' 分 ' + (t % 60) + ' 秒';
+  return Math.floor(m / 60) + ' 时 ' + (m % 60) + ' 分';
+}
 
 function setJob(running, name, result) {
   $('dot').className = 'dot ' + (running ? 'run' : result === 'ok' ? 'ok' : result === 'err' ? 'err' : '');
   $('jobName').textContent = name;
   $('jobState').textContent = running ? '运行中' : result === 'ok' ? '完成' : result === 'err' ? '有问题' : '待命';
+  if ($('pgWrap')) $('pgWrap').classList.toggle('running', !!running);
+  TASK_BTNS.forEach(id => { const b = $(id); if (b) b.disabled = !!running; });
 }
+
 function setBatch(text, pct) {
   if (typeof pct === 'number') $('batchBar').style.width = pct + '%';
   $('batchState').textContent = text;
 }
+
+function setMeta(chips) {
+  $('jobMeta').innerHTML = chips.filter(Boolean).map(t => '<span>' + esc(t) + '</span>').join('');
+}
+
+let LOGS = [];
+function clearLog() { LOGS = []; $('jobLog').innerHTML = ''; }
+function pushLog(ok, name, note) {
+  LOGS.unshift('<li class="' + (ok ? 'ok' : 'err') + '"><span class="tx">' + (ok ? '✓' : '✗') + '</span>' +
+    '<span class="nm">' + esc(name) + '</span><span class="tx">' + esc(note) + '</span></li>');
+  if (LOGS.length > 6) LOGS.pop();
+  $('jobLog').innerHTML = LOGS.join('');
+}
+
+function scrollToTask() {
+  const anchor = $('jobName'), wrap = $('pgWrap');
+  if (!anchor || !wrap || !anchor.getBoundingClientRect || !wrap.scrollIntoView) return;
+  const r = anchor.getBoundingClientRect();
+  const h = window.innerHeight || 0;
+  if (r.top < 0 || r.bottom > h) wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 function scopeList(kind) {
   if (kind === 'pl') return PLAYLISTS.filter(p => p.mine);
   if (kind === 'plfav') return PLAYLISTS.filter(p => !p.mine);
@@ -607,41 +643,79 @@ async function syncScope(kind) {
   batchStop = false;
   let ok = 0, fail = 0, songs = 0;
   const t0 = Date.now();
+  clearLog();
   setJob(true, '同步 · ' + KIND_NAME[kind]);
+  setMeta(['0/' + list.length, '0%', '准备中…']);
+  scrollToTask();
   $('batchState').onclick = () => { batchStop = true; setBatch('正在停止…'); };
   for (let i = 0; i < list.length; i++) {
     if (batchStop) break;
-    setBatch('同步中 ' + (i + 1) + '/' + list.length + '（成功 ' + ok + ' 失败 ' + fail + '）· 点击停止',
+    const p = list[i];
+    const elapsed = (Date.now() - t0) / 1000;
+    const per = i ? elapsed / i : 0;
+    setBatch('同步 ' + (i + 1) + '/' + list.length + ' · ' + (p.name || ('#' + p.id)) + ' · 点击停止',
       Math.round(i / list.length * 100));
-    try { const r = await inv('stage_one', { kind, id: list[i].id }); songs += (r && r.count) || 0; ok++; }
-    catch (e) { fail++; }
+    setMeta([
+      (i + 1) + '/' + list.length,
+      Math.round(i / list.length * 100) + '%',
+      '已用 ' + fmtSec(elapsed),
+      i > 0 ? '剩约 ' + fmtSec(per * (list.length - i)) : '',
+      i > 0 ? (1 / per).toFixed(1) + ' 项/秒' : '',
+      '成功 ' + ok + (fail ? ' · 失败 ' + fail : ''),
+    ]);
+    const t1 = Date.now();
+    try {
+      const r = await inv('stage_one', { kind, id: p.id });
+      const c = (r && r.count) || 0;
+      songs += c; ok++;
+      pushLog(true, p.name || String(p.id), c + ' 首 · ' + ((Date.now() - t1) / 1000).toFixed(1) + 's');
+    } catch (e) {
+      fail++;
+      pushLog(false, p.name || String(p.id), String(e).slice(0, 40));
+    }
   }
   $('batchState').onclick = null;
+  const total = (Date.now() - t0) / 1000;
   try { SCOPE[kind] = await inv('stage_stats', { kind }); renderHomeStats(); } catch (e) {}
-  setBatch((batchStop ? '已停止：' : '同步完成：') + ok + ' 个，' + songs + ' 首' +
-    (fail ? '，失败 ' + fail + ' 个' : '') + '（' + Math.round((Date.now() - t0) / 1000) + 's）', 100);
+  setBatch((batchStop ? '已停止：' : '同步完成：') + ok + ' 项，' + songs + ' 首' +
+    (fail ? '，失败 ' + fail + ' 项' : '') + '，用时 ' + fmtSec(total), 100);
+  setMeta([ok + ' 项成功', fail ? fail + ' 项失败' : '', songs + ' 首', '净用时 ' + fmtSec(total)]);
   setJob(false, batchStop ? '已停止' : '同步完成', fail ? 'err' : 'ok');
 }
 
 async function tidyScope(kind) {
+  clearLog();
   setJob(true, '整理 · ' + KIND_NAME[kind]);
   setBatch('正在生成文档…');
+  setMeta(['读取暂存区', '生成 CSV + MD']);
+  const t0 = Date.now();
   try {
     const r = await inv('tidy', { kind });
+    const sec = (Date.now() - t0) / 1000;
+    if (r.failed) pushLog(false, KIND_NAME[kind], r.failed + ' 项写入失败');
+    else pushLog(true, KIND_NAME[kind], r.items + ' 项 → ' + (r.sub || '导出目录'));
     setBatch('整理完成：' + r.items + ' 个，' + r.files + ' 个文件，' + r.songs + ' 首 → ' + (r.sub || '导出目录'));
+    setMeta([r.items + ' 项', r.files + ' 个文件', r.songs + ' 首', '用时 ' + fmtSec(sec)]);
     setJob(false, '整理完成', r.failed ? 'err' : 'ok');
   } catch (e) { setBatch('整理失败：' + e); setJob(false, '整理失败', 'err'); }
 }
 
 async function checkScope(kind) {
+  clearLog();
   setJob(true, '核验 · ' + KIND_NAME[kind]);
   setBatch('正在核验…');
+  setMeta(['比对暂存区与文档']);
+  const t0 = Date.now();
   try {
     const r = await inv('check_exports', { kind });
+    const sec = (Date.now() - t0) / 1000;
+    (r.items || []).slice(0, 6).forEach(it =>
+      pushLog(it.ok, it.name, it.ok ? it.count + ' 首' : (it.issues || []).join('、')));
     const bad = (r.items || []).filter(x => !x.ok).slice(0, 3)
       .map(x => x.name + '（' + (x.issues || []).join('、') + '）').join('；');
     setBatch((r.okCount ? '核验通过 ' + r.okCount + ' 项' : '暂无可核验的数据') +
       (r.badCount ? '；问题 ' + r.badCount + ' 项：' + bad : '') + '，曲目合计 ' + r.songs);
+    setMeta([r.okCount + ' 项通过', r.badCount ? r.badCount + ' 项异常' : '', r.songs + ' 首', '用时 ' + fmtSec(sec)]);
     setJob(false, '核验完成', r.badCount ? 'err' : 'ok');
   } catch (e) { setBatch('核验失败：' + e); setJob(false, '核验失败', 'err'); }
 }

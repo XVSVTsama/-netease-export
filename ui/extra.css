@@ -19,3 +19,39 @@ input[type="password"]{width:100%;padding:11px 14px;border-radius:12px;border:1p
 input[type="password"]:focus{border-color:var(--accent)}
 header.top{padding-top:env(safe-area-inset-top,0px)}
 .tabs{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+
+/* ---------- 任务面板：更详细的进度、最近条目与动效 ---------- */
+.progress { margin: 12px 0 8px; height: 6px; border-radius: 3px; }
+.progress i { transition: width .35s cubic-bezier(.4, 0, .2, 1); }
+.progress.running i {
+  background: linear-gradient(90deg, var(--accent) 0%, #ff7a8c 50%, var(--accent) 100%);
+  background-size: 200% 100%;
+  animation: eta-flow 1.2s linear infinite;
+}
+@keyframes eta-flow { from { background-position: 0% 0; } to { background-position: -200% 0; } }
+
+.job-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.job-meta span {
+  font-size: 12px; color: var(--muted); background: var(--bg-elev);
+  border-radius: 8px; padding: 3px 8px; font-variant-numeric: tabular-nums;
+  animation: eta-pop .2s ease;
+}
+@keyframes eta-pop { from { transform: translateY(-3px); } to { transform: none; } }
+
+.job-log { list-style: none; margin: 10px 0 2px; padding: 0 0 2px; max-height: 132px; overflow-y: auto; scrollbar-width: thin; }
+.job-log li {
+  display: flex; align-items: center; gap: 8px; font-size: 12.5px; line-height: 1.4;
+  background: var(--bg-elev); border-radius: 9px; padding: 7px 10px; margin-bottom: 6px;
+  animation: eta-slide .22s ease;
+}
+.job-log li.ok { border-left: 3px solid var(--ok); }
+.job-log li.err { border-left: 3px solid var(--accent); }
+.job-log li .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-log li .tx { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+@keyframes eta-slide { from { transform: translateY(-4px); } to { transform: none; } }
+
+.dot.run { animation: eta-pulse 1.3s ease-in-out infinite; }
+@keyframes eta-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 180, 0, .55); }
+  50% { box-shadow: 0 0 0 7px rgba(255, 180, 0, 0); }
+}
