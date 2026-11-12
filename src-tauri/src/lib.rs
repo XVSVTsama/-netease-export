@@ -192,6 +192,18 @@ fn persist_companies(
     updated
 }
 
+/// 整理前把厂牌缓存写回 stage：纯本地，一个请求都不发
+fn apply_cached_companies(app: &tauri::AppHandle, kind: &str) -> usize {
+    let dir = match stage_dir(app, kind) { Ok(d) => d, Err(_) => return 0 };
+    let mut files = read_stage(&dir);
+    let found: HashMap<i64, String> = api::companies_snapshot()
+        .into_iter()
+        .filter(|(_, v)| !v.is_empty())
+        .collect();
+    if found.is_empty() { return 0; }
+    persist_companies(&mut files, &found, &std::collections::HashSet::new())
+}
+
 fn to_csv(d: &Value) -> String {
     let mut out = String::from("\u{feff}序号,歌名,制作人/团体,专辑,发行公司/厂牌,时长,时长秒,歌曲ID,专辑ID,流行度,MV_ID,别名,权限,状态\n");
     if let Some(rows) = d["rows"].as_array() {
@@ -890,6 +902,7 @@ async fn run_job(
     ids: Vec<i64>,
     do_tidy_flag: bool,
     do_check_flag: bool,
+    with_fill: bool,
 ) {
     let total = ids.len();
     let label = kind_sub(&kind).unwrap_or("歌单").to_string();
@@ -922,23 +935,29 @@ async fn run_job(
     }
 
     if do_tidy_flag && !job.stop.load(Ordering::SeqCst) {
-        job.set_phase("tidy");
-        job.log("step", "整理：补厂牌并生成文档");
-        match fill_all(&app, &client, job.as_ref(), &kind).await {
-            Ok((found, updated)) => job.log("ok", format!("补厂牌完成：{} 张，回写 {} 个", found, updated)),
-            Err(e) => {
-                job.fail.fetch_add(1, Ordering::SeqCst);
-                job.log("err", format!("补厂牌失败：{}", e));
-                job.log("warn", "继续生成文档，但这些歌的厂牌列会是空的");
+        if with_fill {
+            job.set_phase("tidy");
+            job.log("step", "补厂牌（联网，较慢）");
+            match fill_all(&app, &client, job.as_ref(), &kind).await {
+                Ok((found, updated)) => job.log("ok", format!("补厂牌完成：{} 张，回写 {} 个", found, updated)),
+                Err(e) => {
+                    job.fail.fetch_add(1, Ordering::SeqCst);
+                    job.log("err", format!("补厂牌失败：{}", e));
+                    job.log("warn", "继续生成文档，没查到的厂牌会标成「未查询」");
+                }
             }
+        } else {
+            let n = apply_cached_companies(&app, &kind);
+            job.log("info", format!("厂牌取自本地缓存（更新 {} 个文件），要联网补请点「补厂牌」", n));
         }
         job.set_phase("tidy-doc");
+        let t0 = Instant::now();
         match do_tidy(&app, &kind).await {
             Ok(v) => {
                 set_state(&app, "lastTidy", &now_human());
                 job.log("ok", format!(
-                    "整理完成：{} 项 · {} 个文件 · {} 首（去重 {}）",
-                    v["items"], v["files"], v["songs"], v["unique"]));
+                    "整理完成：{} 项 · {} 个文件 · {} 首（去重 {}）· 用时 {:.1}s",
+                    v["items"], v["files"], v["songs"], v["unique"], t0.elapsed().as_secs_f64()));
             }
             Err(e) => job.log("err", format!("整理失败：{}", e)),
         }
@@ -973,6 +992,7 @@ async fn job_start(
     ids: Vec<i64>,
     do_tidy: bool,
     do_check: bool,
+    with_fill: bool,
 ) -> Result<Value, String> {
     if kind_sub(&kind).is_none() { return Err("未知类型".into()); }
     let job = state.job.clone();
@@ -992,7 +1012,7 @@ async fn job_start(
     let task_client = state.client.clone();
     let task_job = job.clone();
     tauri::async_runtime::spawn(async move {
-        run_job(task_app, task_client, task_job, kind, ids, do_tidy, do_check).await;
+        run_job(task_app, task_client, task_job, kind, ids, do_tidy, do_check, with_fill).await;
     });
 
     Ok(serde_json::json!({ "ok": true, "log": log_path }))

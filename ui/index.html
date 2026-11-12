@@ -70,8 +70,9 @@
       <h2>我的创建<span class="count" id="createdMeta"></span></h2>
       <div class="stats" id="createdStats"></div>
       <div class="row-label">歌单</div>
-      <div class="actions" style="grid-template-columns:1fr">
-        <button class="btn primary" id="btnRunPl">开始处理</button>
+      <div class="actions">
+        <button class="btn primary" id="btnRunPl">整理并导出</button>
+        <button class="btn" id="btnFillPl">补厂牌</button>
       </div>
     </section>
 
@@ -79,12 +80,14 @@
       <h2>我的收藏<span class="count" id="favMeta"></span></h2>
       <div class="stats" id="favStats"></div>
       <div class="row-label">歌单</div>
-      <div class="actions" style="grid-template-columns:1fr">
-        <button class="btn soft" id="btnRunFav">开始处理</button>
+      <div class="actions">
+        <button class="btn soft" id="btnRunFav">整理并导出</button>
+        <button class="btn" id="btnFillFav">补厂牌</button>
       </div>
       <div class="row-label">收藏专辑</div>
-      <div class="actions" style="grid-template-columns:1fr">
-        <button class="btn soft" id="btnRunAl">开始处理</button>
+      <div class="actions">
+        <button class="btn soft" id="btnRunAl">整理并导出</button>
+        <button class="btn" id="btnFillAl">补厂牌</button>
       </div>
     </section>
 
@@ -622,6 +625,7 @@ function accStats(st) {
 const KIND_NAME = { pl: '我创建的歌单', plfav: '收藏歌单', al: '收藏专辑' };
 const PHASE = { sync: '同步', tidy: '补厂牌', 'tidy-doc': '生成文档', check: '核验', done: '完成' };
 const RUN_BTNS = { pl: 'btnRunPl', plfav: 'btnRunFav', al: 'btnRunAl' };
+const FILL_BTNS = { pl: 'btnFillPl', plfav: 'btnFillFav', al: 'btnFillAl' };
 let JOB = null, JOB_KIND = '', pollTimer2 = null, LOGLEN = -1;
 
 function fmtSec(sec) {
@@ -695,6 +699,10 @@ function renderJob(j) {
   }
   renderLogs(j.logs);
   ['pl', 'plfav', 'al'].forEach(k => {
+    const f = $(FILL_BTNS[k]);
+    if (f) f.disabled = j.running && !(JOB_KIND === k);
+  });
+  ['pl', 'plfav', 'al'].forEach(k => {
     const b = $(RUN_BTNS[k]);
     if (!b) return;
     const mine = j.running && JOB_KIND === k;
@@ -726,7 +734,7 @@ async function afterJob() {
   JOB_KIND = '';
 }
 
-async function runScope(kind) {
+async function runScope(kind, withFill) {
   if (JOB && JOB.running) {
     await inv('job_stop');
     setBatch('正在停止…');
@@ -744,11 +752,13 @@ async function runScope(kind) {
   JOB_KIND = kind;
   LOGLEN = -1;
   scrollToTask();
-  setBatch(ids.length ? '准备同步 ' + ids.length + ' 项（已同步 ' + (all.length - ids.length) + ' 项）'
+  const runIds = withFill ? [] : ids;
+  setBatch(withFill ? '补厂牌（联网，可中途停止）'
+    : runIds.length ? '准备同步 ' + runIds.length + ' 项（已同步 ' + (all.length - runIds.length) + ' 项）'
     : '全部已同步，直接整理');
   setMeta(['准备中']);
   try {
-    await inv('job_start', { kind, ids, doTidy: true, doCheck: true });
+    await inv('job_start', { kind, ids: runIds, doTidy: true, doCheck: true, withFill: !!withFill });
     startPoll();
   } catch (e) {
     setBatch('启动失败：' + e);
@@ -764,9 +774,12 @@ function scrollToTask() {
   if (r.top < 0 || r.bottom > h) wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-$('btnRunPl').onclick = () => runScope('pl');
-$('btnRunFav').onclick = () => runScope('plfav');
-$('btnRunAl').onclick = () => runScope('al');
+$('btnRunPl').onclick = () => runScope('pl', false);
+$('btnRunFav').onclick = () => runScope('plfav', false);
+$('btnRunAl').onclick = () => runScope('al', false);
+$('btnFillPl').onclick = () => runScope('pl', true);
+$('btnFillFav').onclick = () => runScope('plfav', true);
+$('btnFillAl').onclick = () => runScope('al', true);
 $('batchState').onclick = () => { if (JOB && JOB.running) inv('job_stop'); };
 $('btnReloadAll').onclick = async () => { await loadPlaylists(); await loadAlbums(); };
 
