@@ -161,6 +161,13 @@
         <button class="btn" id="btnSpecialList">查看明细</button>
         <button class="btn soft" id="btnSpecialCsv">导出清单 CSV</button>
       </div>
+      <div class="accs" id="spFilter" style="margin-top:12px">
+        <button class="chip on" data-f="all">全部</button>
+        <button class="chip" data-f="down">已下架</button>
+        <button class="chip" data-f="otherVersion">其他版本</button>
+        <button class="chip" data-f="special">特殊字符</button>
+        <button class="chip" data-f="nonLatin">非拉丁</button>
+      </div>
       <div class="list" id="specialList" style="margin-top:12px"></div>
       <div class="hint" id="specialState"></div>
     </section>
@@ -1052,22 +1059,54 @@ $('btnDirSave').onclick = async () => {
 inv('app_version').then(v => { if (v) $('ver').textContent = v; }).catch(() => {});
 
 /* ---------- 专项 ---------- */
+let spAll = [], spFilter = 'all', spPage = 0;
+const SP_PAGE = 500;
+
+function spFiltered() {
+  if (spFilter === 'all') return spAll;
+  return spAll.filter(it => (it.kinds || []).includes(spFilter));
+}
+
+function renderSpList() {
+  const list = spFiltered();
+  const shown = list.slice(0, (spPage + 1) * SP_PAGE);
+  if (!shown.length) {
+    $('specialList').innerHTML = '<div class="empty">这个分类没有条目</div>';
+    setHint('specialState', '筛出 0 条 / 共 ' + spAll.length + ' 条');
+    return;
+  }
+  const rows = shown.map((it, i) => {
+    const kinds = (it.kinds || []).map(k => ({ down: '已下架', otherVersion: '其他版本', special: '特殊字符', nonLatin: '非拉丁' }[k] || k)).join(' / ');
+    return '<div class="track"><span class="idx">' + (i + 1) + '</span><div class="body">' +
+      '<div class="title">' + esc(disp(it.name)) + '</div>' +
+      '<div class="meta">' + [it.ar, it.al, it.company || '未标注厂牌', kinds].filter(Boolean).map(esc).join(' · ') + '</div></div></div>';
+  }).join('');
+  $('specialList').innerHTML = rows +
+    (list.length > shown.length ? '<button class="more" id="spMore">继续加载（已显示 ' + shown.length + ' / ' + list.length + '）</button>' : '');
+  const more = $('spMore');
+  if (more) more.onclick = () => { spPage++; renderSpList(); };
+  setHint('specialState', '筛出 ' + list.length + ' 条 / 共 ' + spAll.length + ' 条');
+}
+
 $('btnSpecialList').onclick = async () => {
   $('specialList').innerHTML = '<div class="empty">加载中…</div>';
   try {
     const r = await inv('special_items');
-    const items = r.items || [];
-    $('specialList').innerHTML = items.length
-      ? items.slice(0, 500).map((it, i) => {
-        const kinds = (it.kinds || []).map(k => ({ down: '已下架', otherVersion: '其他版本', special: '特殊字符', nonLatin: '非拉丁' }[k] || k)).join(' / ');
-        return '<div class="track"><span class="idx">' + (i + 1) + '</span><div class="body">' +
-          '<div class="title">' + esc(disp(it.name)) + '</div>' +
-          '<div class="meta">' + esc(it.ar) + ' · ' + esc(it.al) + ' · ' + esc(it.company || '未标注厂牌') + ' · ' + esc(kinds) + '</div></div></div>';
-      }).join('')
-      : '<div class="empty">暂无明细，先导出歌单</div>';
-    setHint('specialState', '共 ' + r.total + ' 条');
+    spAll = r.items || [];
+    spFilter = 'all'; spPage = 0;
+    document.querySelectorAll('#spFilter .chip').forEach(b => b.classList.toggle('on', b.dataset.f === 'all'));
+    renderSpList();
   } catch (e) { setHint('specialState', '加载失败：' + e); }
 };
+
+document.querySelectorAll('#spFilter .chip').forEach(b => {
+  b.onclick = () => {
+    spFilter = b.dataset.f; spPage = 0;
+    document.querySelectorAll('#spFilter .chip').forEach(x => x.classList.toggle('on', x === b));
+    renderSpList();
+  };
+});
+
 $('btnSpecialCsv').onclick = async () => {
   try { const r = await inv('export_special'); setHint('specialState', '已导出：' + r.paths.join(' / ')); }
   catch (e) { setHint('specialState', '导出失败：' + e); }
