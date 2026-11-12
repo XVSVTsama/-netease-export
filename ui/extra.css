@@ -62,3 +62,6 @@ header.top{padding-top:env(safe-area-inset-top,0px)}
 .hero { align-items: center; }
 .row .thumb { object-fit: cover; }
 .row .thumb:empty { border: 1px dashed var(--line); }
+
+/* 日志时间列 */
+.job-log .lg .ts { color: var(--muted); margin-right: 8px; font-variant-numeric: tabular-nums; }

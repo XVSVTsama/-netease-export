@@ -206,7 +206,7 @@
       <div class="hint">
         导出文件写入 <code>/sdcard/Download/网易云导出</code>，同时在应用私有目录留一份。<br>
         本应用只导出公开的歌单信息与曲目元数据，不播放、不下载音频，也不绕过任何付费或版权限制。<br>
-        版本 <span id="ver">1.4.7</span>
+        版本 <span id="ver">1.4.8</span>
       </div>
     </section>
   </div>
@@ -279,6 +279,13 @@ const thumbHtml = (u, size) => u
 
 const maskPl = (name, idx) => PRIVACY ? '歌单 ' + String(idx + 1).padStart(3, '0') : name;
 const maskNick = () => PRIVACY ? '账号 1' : nickname;
+const fmtDate = ts => {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '—';
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+};
 const fmtDur = ms => { if (!ms || ms <= 0) return '--:--'; const t = Math.round(ms / 1000); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
 const setHint = (id, text, kind) => { const el = $(id); if (!el) return; el.className = 'hint' + (kind ? ' ' + kind : ''); el.textContent = text || ''; };
 
@@ -331,8 +338,14 @@ function showView(v) {
 }
 document.querySelectorAll('.tabs a').forEach(a => a.onclick = e => { e.preventDefault(); showView(a.dataset.v); });
 
+let TIMES = { lastSync: '', lastTidy: '', lastCheck: '' };
+
 function renderSub() {
   if (!nickname) { $('sub').textContent = '未登录'; return; }
+  if (TIMES.lastSync) {
+    $('sub').textContent = '同步 ' + TIMES.lastSync + (TIMES.lastTidy ? ' · 文档 ' + TIMES.lastTidy : '');
+    return;
+  }
   const base = PRIVACY ? '已登录（隐私模式）' : '已登录：' + nickname + '（uid ' + uid + '）';
   $('sub').textContent = PLAYLISTS.length ? base + ' · ' + PLAYLISTS.length + ' 个歌单' : base;
 }
@@ -547,7 +560,7 @@ async function openDetail(kind, id) {
     if (kind === 'pl') {
       $('dMeta').textContent = '曲目 ' + (d.count || detailRows.length) + ' 首';
     } else {
-      const t = d.publishTime ? new Date(d.publishTime).toISOString().slice(0, 10) : '—';
+      const t = fmtDate(d.publishTime);
       $('dMeta').textContent = (d.artists || '未知') + ' · ' + (d.company || '未标注厂牌') + ' · ' + t + ' · ' + (d.count || detailRows.length) + ' 首';
     }
     renderDetail();
@@ -644,7 +657,8 @@ function renderLogs(logs) {
   if (logs.length === LOGLEN) return;
   LOGLEN = logs.length;
   const box = $('jobLog');
-  box.innerHTML = logs.map(l => '<div class="lg ' + l.k + '">' + esc(l.t) + '</div>').join('');
+  box.innerHTML = logs.map(l => '<div class="lg ' + l.k + '">' +
+    (l.ts ? '<span class="ts">' + esc(l.ts) + '</span>' : '') + esc(l.t) + '</div>').join('');
   box.scrollTop = box.scrollHeight;
 }
 
@@ -790,7 +804,7 @@ async function exportAlbums() {
   const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
   const head = '序号,专辑,艺人,曲目数,发行公司,发行时间,专辑ID\n';
   const rows = ALBUMS.map((a, i) => {
-    const d = a.publishTime ? new Date(a.publishTime).toISOString().slice(0, 10) : '';
+    const d = fmtDate(a.publishTime);
     return [i + 1, q(a.name), q(a.artists), a.size, q(a.company), d, a.id].join(',');
   }).join('\n');
   try {
@@ -903,7 +917,11 @@ $('btnRelogin').onclick = () => { $('loginCard').hidden = false; showView('home'
   applyTheme(t);
   renderSpecial();
   renderHomeStats();
-  inv('job_status').then(j => { if (j && j.running) { JOB = j; JOB_KIND = j.kind || ''; startPoll(); } }).catch(() => {});
+  inv('job_status').then(j => {
+    if (!j) return;
+    if (j.times) { TIMES = j.times; renderSub(); }
+    if (j.running) { JOB = j; JOB_KIND = j.kind || ''; startPoll(); }
+  }).catch(() => {});
   ['pl', 'plfav', 'al'].forEach(k => inv('stage_stats', { kind: k })
     .then(s => { if (s && s.lists) { SCOPE[k] = s; renderHomeStats(); } })
     .catch(() => {}));

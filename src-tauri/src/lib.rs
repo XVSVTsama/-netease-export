@@ -24,7 +24,7 @@ pub struct Job {
     fail: AtomicUsize,
     songs: AtomicI64,
     started: Mutex<Option<Instant>>,
-    logs: Mutex<Vec<(String, String)>>,
+    logs: Mutex<Vec<(String, String, String)>>,
     log_path: Mutex<String>,
 }
 
@@ -72,11 +72,12 @@ impl Job {
         if !path.is_empty() {
             use std::io::Write;
             if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&path) {
-                let _ = writeln!(f, "[{}] {}", kind, text);
+                let _ = writeln!(f, "{} [{}] {}", now_full(), kind, text);
             }
         }
+        let hms = chrono::Local::now().format("%H:%M:%S").to_string();
         let mut logs = self.logs.lock().unwrap();
-        logs.push((kind.to_string(), text));
+        logs.push((kind.to_string(), hms, text));
         if logs.len() > 600 { logs.remove(0); }
     }
 }
@@ -153,7 +154,7 @@ fn to_md(d: &Value) -> String {
     let name = d["name"].as_str().unwrap_or("歌单");
     let mut out = format!("# {}\n\n- 曲目：{} 首\n- 歌单 ID：{}\n- 导出时间：{}\n\n## 曲目\n\n",
         name, d["count"].as_i64().unwrap_or(0), d["id"].as_i64().unwrap_or(0),
-        chrono_like_now());
+        now_human());
     if let Some(rows) = d["rows"].as_array() {
         for (i, r) in rows.iter().enumerate() {
             let company = r["company"].as_str().unwrap_or("");
@@ -171,11 +172,34 @@ fn to_md(d: &Value) -> String {
     out
 }
 
-fn chrono_like_now() -> String {
-    // 不引入 chrono：用系统时间戳拼近似（本地时区偏移未处理，仅作标记）
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    format!("epoch {}", secs)
+fn now_human() -> String {
+    chrono::Local::now().format("%Y-%m-%d %H:%M").to_string()
+}
+
+fn now_full() -> String {
+    chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+/* ---------------- 最近一次同步 / 整理的时间 ---------------- */
+
+fn state_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("state.json"))
+}
+
+fn read_state(app: &tauri::AppHandle) -> Value {
+    state_path(app)
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .unwrap_or_else(|| serde_json::json!({}))
+}
+
+fn set_state(app: &tauri::AppHandle, key: &str, value: &str) {
+    let mut v = read_state(app);
+    v[key] = Value::String(value.to_string());
+    if let Some(p) = state_path(app) {
+        if let Some(dir) = p.parent() { let _ = fs::create_dir_all(dir); }
+        let _ = fs::write(p, v.to_string());
+    }
 }
 
 /* ---------------- 命令 ---------------- */
@@ -627,7 +651,7 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
     if !index_rows.is_empty() {
         let idx = format!(
             "# {}\n\n- 项数：{}\n- 曲目合计：{} 首\n- 生成时间：{}\n\n| 名称 | 曲目 | 文件 |\n| --- | --- | --- |\n{}\n",
-            sub, items, songs, chrono_like_now(), index_rows.join("\n")
+            sub, items, songs, now_human(), index_rows.join("\n")
         );
         let (p, _) = write_both(app, &format!("{}/00_索引.md", sub), &idx);
         if !p.is_empty() { files += 1; }
@@ -698,10 +722,7 @@ async fn check_exports(app: tauri::AppHandle, kind: String) -> Result<Value, Str
 /* ---------------- 后台任务：同步 → 整理 → 核验 ---------------- */
 
 fn now_stamp() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let (days, rem) = (secs / 86400, secs % 86400);
-    format!("d{}T{:02}{:02}{:02}", days, rem / 3600, (rem % 3600) / 60, rem % 60)
+    chrono::Local::now().format("%Y%m%d-%H%M%S").to_string()
 }
 
 async fn run_job(
@@ -761,9 +782,12 @@ async fn run_job(
             }
         }
         match do_tidy(&app, &kind).await {
-            Ok(v) => job.log("ok", format!(
-                "整理完成：{} 项 · {} 个文件 · {} 首（去重 {}）",
-                v["items"], v["files"], v["songs"], v["unique"])),
+            Ok(v) => {
+                set_state(&app, "lastTidy", &now_human());
+                job.log("ok", format!(
+                    "整理完成：{} 项 · {} 个文件 · {} 首（去重 {}）",
+                    v["items"], v["files"], v["songs"], v["unique"]));
+            }
             Err(e) => job.log("err", format!("整理失败：{}", e)),
         }
     }
@@ -773,6 +797,7 @@ async fn run_job(
         job.log("step", "核验文档");
         match do_check(&app, &kind).await {
             Ok(v) => {
+                set_state(&app, "lastCheck", &now_human());
                 let bad = v["badCount"].as_u64().unwrap_or(0);
                 job.log(if bad == 0 { "ok" } else { "err" },
                     format!("核验：通过 {} 项 · 问题 {} 项", v["okCount"], bad));
@@ -781,6 +806,7 @@ async fn run_job(
         }
     }
 
+    set_state(&app, "lastSync", &now_human());
     job.set_phase("done");
     job.running.store(false, Ordering::SeqCst);
     job.log("done", format!("完成：成功 {} · 失败 {} · {} 首", ok, fail, songs));
@@ -820,14 +846,16 @@ async fn job_start(
 }
 
 #[tauri::command]
-fn job_status(state: State<'_, AppState>) -> Result<Value, String> {
+fn job_status(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
+    let app_handle = app.clone();
     let job = &state.job;
     let logs = job.logs.lock().unwrap();
     let start = logs.len().saturating_sub(160);
     let slice: Vec<Value> = logs[start..].iter()
-        .map(|(k, t)| serde_json::json!({ "k": k, "t": t }))
+        .map(|(k, ts, t)| serde_json::json!({ "k": k, "ts": ts, "t": t }))
         .collect();
     drop(logs);
+    let st = read_state(&app_handle);
     Ok(serde_json::json!({
         "running": job.running.load(Ordering::SeqCst),
         "phase": job.phase.lock().unwrap().clone(),
@@ -840,6 +868,11 @@ fn job_status(state: State<'_, AppState>) -> Result<Value, String> {
         "songs": job.songs.load(Ordering::SeqCst),
         "elapsed": job.started.lock().unwrap().map(|t| t.elapsed().as_secs_f64()).unwrap_or(0.0),
         "logs": slice,
+        "times": {
+            "lastSync": st["lastSync"].as_str().unwrap_or(""),
+            "lastTidy": st["lastTidy"].as_str().unwrap_or(""),
+            "lastCheck": st["lastCheck"].as_str().unwrap_or("")
+        },
         "logPath": job.log_path.lock().unwrap().clone()
     }))
 }
