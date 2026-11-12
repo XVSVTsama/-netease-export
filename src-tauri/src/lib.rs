@@ -171,6 +171,27 @@ fn apply_companies(
     changed
 }
 
+/// 把当前查到的厂牌写回 stage 文件，返回被改动的文件数
+/// 每批调用一次就能做增量保存，中断也不会丢掉已经查过的专辑
+fn persist_companies(
+    files: &mut [(PathBuf, Value)],
+    found: &std::collections::HashMap<i64, String>,
+    failed: &std::collections::HashSet<i64>,
+) -> usize {
+    let mut updated = 0usize;
+    for (p, d) in files.iter_mut() {
+        let changed = match d["rows"].as_array_mut() {
+            Some(rows) => apply_companies(rows, found, failed),
+            None => false,
+        };
+        if changed {
+            updated += 1;
+            let _ = fs::write(&*p, d.to_string());
+        }
+    }
+    updated
+}
+
 fn to_csv(d: &Value) -> String {
     let mut out = String::from("\u{feff}序号,歌名,制作人/团体,专辑,发行公司/厂牌,时长,时长秒,歌曲ID,专辑ID,流行度,MV_ID,别名,权限,状态\n");
     if let Some(rows) = d["rows"].as_array() {
@@ -579,7 +600,7 @@ fn stage_ids(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
 /// 分批补厂牌：最多 limit 张，回写暂存文件；返回 (找到数量, 回写歌单数, 剩余)
 async fn do_fill(app: &tauri::AppHandle, client: &Client, kind: &str, limit: usize) -> Result<(usize, usize, usize), String> {
     let dir = stage_dir(app, kind)?;
-    let files = read_stage(&dir);
+    let mut files = read_stage(&dir);
     let mut need: Vec<i64> = Vec::new();
     let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
     for (_, d) in &files {
@@ -599,17 +620,7 @@ async fn do_fill(app: &tauri::AppHandle, client: &Client, kind: &str, limit: usi
     if need.len() > limit { need.truncate(limit); }
     let (found, failed_ids, _err) = api::fill_companies(client, &need).await;
 
-    let mut updated = 0usize;
-    for (p, mut d) in files {
-        let changed = match d["rows"].as_array_mut() {
-            Some(rows) => apply_companies(rows, &found, &failed_ids),
-            None => false,
-        };
-        if changed {
-            updated += 1;
-            let _ = fs::write(&p, d.to_string());
-        }
-    }
+    let updated = persist_companies(&mut files, &found, &failed_ids);
 
     if let Ok(dir_app) = app.path().app_data_dir() {
         let snap = api::companies_snapshot();
@@ -769,7 +780,7 @@ fn now_stamp() -> String {
 /// 一次性补全暂存区的厂牌：只读写一次 stage 文件，分批查询并逐批写日志
 async fn fill_all(app: &tauri::AppHandle, client: &Client, job: &Job, kind: &str) -> Result<(usize, usize), String> {
     let dir = stage_dir(app, kind)?;
-    let files = read_stage(&dir);
+    let mut files = read_stage(&dir);
     let mut need: Vec<i64> = Vec::new();
     let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
     for (_, d) in &files {
@@ -842,6 +853,10 @@ async fn fill_all(app: &tauri::AppHandle, client: &Client, job: &Job, kind: &str
         } else {
             fail_streak = 0;
         }
+        // 每 10 批把结果落到 stage，中断或被杀进程都不会丢掉已查过的
+        if (i + 1) % 10 == 0 {
+            persist_companies(&mut files, &found, &failed_all);
+        }
         if fail_streak >= 2 {
             let why = last_err.unwrap_or_else(|| "请求全部失败".to_string());
             job.log("err", format!("补厂牌中止：连续 {} 批全部失败，{}", fail_streak, why));
@@ -853,17 +868,7 @@ async fn fill_all(app: &tauri::AppHandle, client: &Client, job: &Job, kind: &str
         job.log("warn", format!("补厂牌结束：成功 {} 张，失败 {} 张", found.len(), fail_total + failed0.len()));
     }
 
-    let mut updated = 0usize;
-    for (p, mut d) in files {
-        let changed = match d["rows"].as_array_mut() {
-            Some(rows) => apply_companies(rows, &found, &failed_all),
-            None => false,
-        };
-        if changed {
-            updated += 1;
-            let _ = fs::write(&p, d.to_string());
-        }
-    }
+    let updated = persist_companies(&mut files, &found, &failed_all);
     let none_cnt = found.values().filter(|v| v.is_empty()).count();
     job.log("info", format!("厂牌结果：{} 张有厂牌 · {} 张网易未标注 · {} 张查询失败",
         found.len() - none_cnt, none_cnt, fail_total + failed0.len()));
