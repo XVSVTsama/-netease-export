@@ -384,7 +384,7 @@ fn apply_cached_companies(app: &tauri::AppHandle, kind: &str) -> usize {
 }
 
 fn to_csv(d: &Value) -> String {
-    let mut out = String::from("\u{feff}序号,歌名,制作人/团体,专辑,发行公司/厂牌,时长,时长秒,歌曲ID,专辑ID,流行度,MV_ID,别名,权限,状态\n");
+    let mut out = String::from("\u{feff}序号,歌名,制作人/团体,专辑,发行公司/厂牌,时长,时长秒,歌曲ID,专辑ID,流行度,MV_ID,别名,权限,可播放,状态\n");
     if let Some(rows) = d["rows"].as_array() {
         for (i, r) in rows.iter().enumerate() {
             let e = |v: &Value| format!("\"{}\"", v.as_str().unwrap_or("").replace('"', "\"\""));
@@ -393,7 +393,7 @@ fn to_csv(d: &Value) -> String {
             let fee = r["fee"].as_i64().unwrap_or(0);
             let perm = match fee { 0 => "免费", 1 => "VIP", 4 => "付费专辑", 8 => "低音质", _ => "其他" };
             out.push_str(&format!(
-                "{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
+                "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
                 i + 1,
                 e(&serde_json::json!(nm)),
                 e(&r["ar"]),
@@ -407,6 +407,7 @@ fn to_csv(d: &Value) -> String {
                 r["mv"].as_i64().unwrap_or(0),
                 e(&r["alia"]),
                 perm,
+                if blocked_row(r, true) { "不可播放" } else { "可播放" },
                 song_state(r)
             ));
         }
