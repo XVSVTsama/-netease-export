@@ -75,6 +75,10 @@ const data = {
   zip_exports: { files: 3, size: 2048, public: '/sdcard/Download/网易云导出.zip' },
   logout: { ok: true },
   save_text: { ok: true, paths: ['/sdcard/Download/网易云导出/x.csv'] },
+  stage_one: { ok: true, name: '测试歌单', count: 2, stats: { down: 1, otherVersion: 1, special: 1, nonLatin: 0, total: 2 } },
+  stage_stats: { ok: true, lists: 3, total: 9, unique: 8, down: 1, special: 2, nonLatin: 1, sub: '歌单' },
+  tidy: { ok: true, items: 3, files: 6, songs: 9, failed: 0, sub: '歌单' },
+  check_exports: { ok: true, okCount: 3, badCount: 0, songs: 9, items: [], sub: '歌单' },
 };
 
 let called = [];
@@ -104,6 +108,16 @@ for (const [name, b] of clickables) {
   if (typeof b.onclick !== 'function') { console.log('未绑定:', name); failed++; continue; }
   bound++;
   try { await b.onclick({ preventDefault() {}, target: b }); } catch (e) { console.log('点击异常', name, e && e.message); failed++; }
+}
+await new Promise(r => setTimeout(r, 50));
+
+// 同步 / 整理 / 核验的文案断言（三个入口都要走通并给出结果）
+for (const [id, want] of [['btnSyncPl', '同步完成'], ['btnTidyPl', '整理完成'], ['btnCheckPl', '核验通过']]) {
+  const b = store.get(id);
+  if (!b || typeof b.onclick !== 'function') { console.log('未绑定:', id); failed++; continue; }
+  try { await b.onclick({ preventDefault() {}, target: b }); } catch (e) { console.log('点击异常', id, e && e.message); failed++; }
+  const txt = store.get('batchState').textContent || '';
+  if (!txt.includes(want)) { console.log('文案不符', id, JSON.stringify(txt)); failed++; }
 }
 await new Promise(r => setTimeout(r, 50));
 

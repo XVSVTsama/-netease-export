@@ -365,6 +365,149 @@ async fn zip_exports(app: tauri::AppHandle) -> Result<Value, String> {
         "path": zip_path.to_string_lossy().to_string(), "public": public }))
 }
 
+/* ---------------- 同步 / 整理 / 核验 ---------------- */
+
+fn kind_sub(kind: &str) -> Option<&'static str> {
+    match kind {
+        "pl" => Some("歌单"),
+        "plfav" => Some("收藏歌单"),
+        "al" => Some("收藏专辑"),
+        _ => None,
+    }
+}
+
+fn stage_dir(app: &tauri::AppHandle, kind: &str) -> Result<PathBuf, String> {
+    let sub = kind_sub(kind).ok_or_else(|| "未知类型".to_string())?;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("stage").join(sub);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn read_stage(dir: &std::path::Path) -> Vec<(PathBuf, Value)> {
+    let mut out: Vec<(PathBuf, Value)> = Vec::new();
+    if let Ok(rd) = fs::read_dir(dir) {
+        for ent in rd.flatten() {
+            let p = ent.path();
+            if p.extension().and_then(|e| e.to_str()) != Some("json") { continue; }
+            if let Some(v) = fs::read_to_string(&p).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+                out.push((p, v));
+            }
+        }
+    }
+    out
+}
+
+/// 同步：把一个歌单 / 收藏歌单 / 收藏专辑的详情抓到暂存区，不生成文档
+#[tauri::command]
+async fn stage_one(app: tauri::AppHandle, state: State<'_, AppState>, kind: String, id: i64) -> Result<Value, String> {
+    if kind_sub(&kind).is_none() { return Err("未知类型".into()); }
+    let d = if kind == "al" {
+        api::album_detail(&state.client, id).await?
+    } else {
+        api::playlist_detail(&state.client, id).await?
+    };
+    let dir = stage_dir(&app, &kind)?;
+    fs::write(dir.join(format!("{}.json", id)), d.to_string()).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "name": d["name"].clone(),
+        "count": d["count"].as_i64().unwrap_or(0),
+        "stats": d["stats"].clone()
+    }))
+}
+
+/// 同步后的汇总口径：去重曲目、下架、特殊字符、非拉丁
+#[tauri::command]
+async fn stage_stats(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
+    let dir = stage_dir(&app, &kind)?;
+    let mut ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    let mut lists = 0i64;
+    let mut total = 0i64;
+    let mut down = 0i64;
+    let mut special = 0i64;
+    let mut non_latin = 0i64;
+    for (_, d) in read_stage(&dir) {
+        lists += 1;
+        if let Some(rows) = d["rows"].as_array() {
+            for r in rows {
+                if let Some(id) = r["id"].as_i64() { ids.insert(id); }
+                total += 1;
+            }
+        }
+        if let Some(st) = d["stats"].as_object() {
+            down += st.get("down").and_then(|v| v.as_i64()).unwrap_or(0);
+            special += st.get("special").and_then(|v| v.as_i64()).unwrap_or(0);
+            non_latin += st.get("nonLatin").and_then(|v| v.as_i64()).unwrap_or(0);
+        }
+    }
+    Ok(serde_json::json!({
+        "ok": true, "lists": lists, "total": total, "unique": ids.len() as i64,
+        "down": down, "special": special, "nonLatin": non_latin, "sub": kind_sub(&kind).unwrap_or("")
+    }))
+}
+
+/// 整理：暂存区 → CSV + MD 文档
+#[tauri::command]
+async fn tidy(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
+    let sub = kind_sub(&kind).ok_or_else(|| "未知类型".to_string())?;
+    let dir = stage_dir(&app, &kind)?;
+    let mut files = 0usize;
+    let mut items = 0usize;
+    let mut songs = 0i64;
+    let mut failed = 0usize;
+    for (_, d) in read_stage(&dir) {
+        let name = sanitize(d["name"].as_str().unwrap_or("未命名"));
+        let (csv_paths, _) = write_both(&app, &format!("{}/{}.csv", sub, name), &to_csv(&d));
+        let (md_paths, _) = write_both(&app, &format!("{}/{}.md", sub, name), &to_md(&d));
+        if csv_paths.is_empty() || md_paths.is_empty() { failed += 1; continue; }
+        files += 2;
+        items += 1;
+        songs += d["count"].as_i64().unwrap_or(0);
+    }
+    Ok(serde_json::json!({
+        "ok": true, "items": items, "files": files, "songs": songs, "failed": failed, "sub": sub
+    }))
+}
+
+/// 核验：比对暂存区与已生成的文档
+#[tauri::command]
+async fn check_exports(app: tauri::AppHandle, kind: String) -> Result<Value, String> {
+    let sub = kind_sub(&kind).ok_or_else(|| "未知类型".to_string())?;
+    let dir = stage_dir(&app, &kind)?;
+    let out = app.path().app_data_dir().map_err(|e| e.to_string())?.join("exports").join(sub);
+    let mut ok_count = 0usize;
+    let mut bad_count = 0usize;
+    let mut songs = 0i64;
+    let mut items: Vec<Value> = Vec::new();
+    for (p, d) in read_stage(&dir) {
+        let name = sanitize(d["name"].as_str().unwrap_or("未命名"));
+        let count = d["count"].as_i64().unwrap_or(0);
+        songs += count;
+        let mut issues: Vec<String> = Vec::new();
+        let mut rows = 0i64;
+        match fs::read_to_string(out.join(format!("{}.csv", name))) {
+            Ok(t) => {
+                rows = (t.lines().count() as i64) - 1;
+                if rows != count { issues.push(format!("CSV 行数 {} ≠ 曲目 {}", rows, count)); }
+                if !t.contains("发行公司/厂牌") { issues.push("CSV 缺厂牌列".to_string()); }
+            }
+            Err(_) => issues.push("缺少 CSV".to_string()),
+        }
+        if fs::read_to_string(out.join(format!("{}.md", name))).is_err() {
+            issues.push("缺少 MD".to_string());
+        }
+        let good = issues.is_empty();
+        if good { ok_count += 1; } else { bad_count += 1; }
+        items.push(serde_json::json!({
+            "file": p.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+            "name": name, "count": count, "rows": rows, "ok": good, "issues": issues
+        }));
+    }
+    Ok(serde_json::json!({
+        "ok": true, "okCount": ok_count, "badCount": bad_count, "songs": songs, "items": items, "sub": sub
+    }))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let client = Arc::new(Client::new());
@@ -386,7 +529,8 @@ pub fn run() {
             qr_new, qr_poll, account, playlists, playlist_detail,
             login_cookie, login_phone_password, sms_sent, login_phone_captcha,
             login_email, logout, export_playlist, collected_albums, play_record, save_text,
-            special_items, export_special, zip_exports, album_detail, export_album
+            special_items, export_special, zip_exports, album_detail, export_album,
+            stage_one, stage_stats, tidy, check_exports
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

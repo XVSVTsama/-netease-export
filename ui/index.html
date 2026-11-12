@@ -71,20 +71,26 @@
       <div class="stats" id="createdStats"></div>
       <div class="row-label">歌单</div>
       <div class="actions row3">
-        <button class="btn primary" id="btnAllCsv">导出 CSV</button>
-        <button class="btn soft" id="btnAllMd">导出 MD</button>
-        <button class="btn" id="btnRefresh">刷新</button>
+        <button class="btn primary" id="btnSyncPl">同步</button>
+        <button class="btn" id="btnTidyPl">整理</button>
+        <button class="btn" id="btnCheckPl">核验</button>
       </div>
     </section>
 
     <section class="section">
       <h2>我的收藏<span class="count" id="favMeta"></span></h2>
       <div class="stats" id="favStats"></div>
+      <div class="row-label">歌单</div>
+      <div class="actions row3">
+        <button class="btn soft" id="btnSyncFav">同步</button>
+        <button class="btn" id="btnTidyFav">整理</button>
+        <button class="btn" id="btnCheckFav">核验</button>
+      </div>
       <div class="row-label">收藏专辑</div>
       <div class="actions row3">
-        <button class="btn soft" id="btnLoadAlbums">加载</button>
-        <button class="btn" id="btnAlbumCsv">CSV</button>
-        <button class="btn" id="btnOpenAlbums">查看</button>
+        <button class="btn soft" id="btnSyncAl">同步</button>
+        <button class="btn" id="btnTidyAl">整理</button>
+        <button class="btn" id="btnCheckAl">核验</button>
       </div>
     </section>
 
@@ -138,7 +144,7 @@
       <div class="spacer"></div>
       <div class="actions row3">
         <button class="btn soft" id="btnReloadAlbums">刷新</button>
-        <button class="btn" id="btnAlbumCsv2">导出 CSV</button>
+        <button class="btn" id="btnAlbumCsv2">导出清单</button>
         <button class="btn" id="btnAlbumZipHint">说明</button>
       </div>
       <div class="list" id="alist" style="margin-top:12px"><div class="empty">点上方刷新加载</div></div>
@@ -167,6 +173,9 @@
       <div class="actions" style="margin-top:12px">
         <button class="btn" id="btnRelogin">重新登录</button>
         <button class="btn" id="btnLogout">退出登录</button>
+      </div>
+      <div class="actions" style="margin-top:10px;grid-template-columns:1fr">
+        <button class="btn soft" id="btnReloadAll">刷新数据</button>
       </div>
     </section>
 
@@ -201,7 +210,7 @@
       <div class="hint">
         导出文件写入 <code>/sdcard/Download/网易云导出</code>，同时在应用私有目录留一份。<br>
         本应用只导出公开的歌单信息与曲目元数据，不播放、不下载音频，也不绕过任何付费或版权限制。<br>
-        版本 <span id="ver">1.4.2</span>
+        版本 <span id="ver">1.4.3</span>
       </div>
     </section>
   </div>
@@ -321,21 +330,27 @@ function renderSub() {
 /* ---------- 统计 ---------- */
 const statHtml = (k, v, sub) => '<div class="stat"><div class="k">' + k + '</div><div class="v">' + v + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
 
+let SCOPE = { pl: null, plfav: null, al: null };
+
 function renderHomeStats() {
   const mine = PLAYLISTS.filter(p => p.mine);
   const fav = PLAYLISTS.filter(p => !p.mine);
-  const songs = mine.reduce((s, p) => s + (p.count || 0), 0);
   const priv = mine.filter(p => p.privacy === 10).length;
   const empty = mine.filter(p => !p.count).length;
-  $('createdMeta').textContent = mine.length ? '歌单 ' + mine.length + ' 个' : '';
+  const ps = SCOPE.pl;
+  const songs = ps && ps.unique ? ps.unique : mine.reduce((s, p) => s + (p.count || 0), 0);
+  const songSub = ps && ps.unique
+    ? '去重 ' + Math.max(0, ps.unique - ps.down) + ' · 下架 ' + ps.down
+    : '去重前合计';
+  $('createdMeta').textContent = '';
   $('createdStats').innerHTML = PLAYLISTS.length
     ? statHtml('歌单', mine.length, '公开 ' + (mine.length - priv) + ' · 私密 ' + priv + (empty ? ' · 空 ' + empty : '')) +
-      statHtml('歌曲', songs, '去重前合计')
+      statHtml('歌曲数目', songs, songSub)
     : statHtml('歌单', '—', '刷新后显示');
-  $('favMeta').textContent = fav.length ? '收藏歌单 ' + fav.length + ' 个' : '';
+  $('favMeta').textContent = '';
   const favSongs = fav.reduce((s, p) => s + (p.count || 0), 0);
   $('favStats').innerHTML = statHtml('收藏歌单', fav.length, '含订阅') +
-    statHtml('收藏专辑', ALBUMS.length || '—', ALBUMS.length ? (ALBUMS.reduce((s, a) => s + (a.size || 0), 0) + ' 首') : '点「加载」') +
+    statHtml('收藏专辑', ALBUMS.length || '—', ALBUMS.length ? (ALBUMS.reduce((s, a) => s + (a.size || 0), 0) + ' 首') : '同步后显示') +
     statHtml('收藏曲目', PLAYLISTS.length ? favSongs : '—', '收藏歌单合计');
   $('favMeta2').textContent = fav.length ? '共 ' + fav.length + ' 个' : '';
 }
@@ -493,8 +508,6 @@ document.querySelectorAll('#plFilter .chip').forEach(b => b.onclick = () => {
 });
 document.querySelectorAll('#dispModes button').forEach(b => b.onclick = () => setDisp(b.dataset.d));
 $('q').oninput = e => { PL_Q = e.target.value.trim(); renderPlaylistList(); };
-$('btnRefresh').onclick = () => { loadPlaylists(); showView('browse'); };
-$('btnOpenAlbums').onclick = () => showView('albums');
 $('btnSpecial').onclick = () => showView('docs');
 
 /* ---------- 详情 ---------- */
@@ -568,36 +581,81 @@ function accStats(st) {
   renderSpecial();
 }
 
-async function exportAll(format) {
-  const mine = PLAYLISTS.filter(p => p.mine);
-  if (!mine.length) { $('batchState').textContent = '没有可导出的歌单，先刷新'; return; }
+/* ---------- 同步 / 整理 / 核验 ---------- */
+const KIND_NAME = { pl: '我创建的歌单', plfav: '收藏歌单', al: '收藏专辑' };
+
+function setJob(running, name, result) {
+  $('dot').className = 'dot ' + (running ? 'run' : result === 'ok' ? 'ok' : result === 'err' ? 'err' : '');
+  $('jobName').textContent = name;
+  $('jobState').textContent = running ? '运行中' : result === 'ok' ? '完成' : result === 'err' ? '有问题' : '待命';
+}
+function setBatch(text, pct) {
+  if (typeof pct === 'number') $('batchBar').style.width = pct + '%';
+  $('batchState').textContent = text;
+}
+function scopeList(kind) {
+  if (kind === 'pl') return PLAYLISTS.filter(p => p.mine);
+  if (kind === 'plfav') return PLAYLISTS.filter(p => !p.mine);
+  return ALBUMS;
+}
+
+async function syncScope(kind) {
+  if (kind === 'al') { if (!ALBUMS.length) await loadAlbums(); }
+  else if (!PLAYLISTS.length) await loadPlaylists();
+  const list = scopeList(kind);
+  if (!list.length) { setBatch('没有可同步的内容'); return; }
   batchStop = false;
-  const target = mine;
-  let ok = 0, fail = 0;
-  $('btnAllCsv').disabled = true; $('btnAllMd').disabled = true;
-  $('dot').className = 'dot run'; $('jobName').textContent = '批量导出 ' + format.toUpperCase(); $('jobState').textContent = '运行中';
-  $('batchState').textContent = '点击这里可以停止';
-  $('batchState').onclick = () => { batchStop = true; $('batchState').textContent = '正在停止…'; };
+  let ok = 0, fail = 0, songs = 0;
   const t0 = Date.now();
-  for (let i = 0; i < target.length; i++) {
+  setJob(true, '同步 · ' + KIND_NAME[kind]);
+  $('batchState').onclick = () => { batchStop = true; setBatch('正在停止…'); };
+  for (let i = 0; i < list.length; i++) {
     if (batchStop) break;
-    const p = target[i];
-    $('batchBar').style.width = Math.round((i / target.length) * 100) + '%';
-    $('batchState').textContent = '导出中 ' + (i + 1) + '/' + target.length + '：' + p.name +
-      '（' + Math.round((Date.now() - t0) / 1000) + 's，成功 ' + ok + ' 失败 ' + fail + '）· 点击停止';
-    try { const r = await inv('export_playlist', { id: p.id, format }); accStats(r.stats); ok++; }
+    setBatch('同步中 ' + (i + 1) + '/' + list.length + '（成功 ' + ok + ' 失败 ' + fail + '）· 点击停止',
+      Math.round(i / list.length * 100));
+    try { const r = await inv('stage_one', { kind, id: list[i].id }); songs += (r && r.count) || 0; ok++; }
     catch (e) { fail++; }
   }
-  $('batchBar').style.width = batchStop ? $('batchBar').style.width : '100%';
-  $('dot').className = 'dot ' + (fail ? 'err' : 'ok');
-  $('jobName').textContent = batchStop ? '已停止' : '已完成';
-  $('jobState').textContent = Math.round((Date.now() - t0) / 1000) + ' 秒';
-  $('batchState').textContent = (batchStop ? '已停止：' : '完成：') + '成功 ' + ok + '，失败 ' + fail;
   $('batchState').onclick = null;
-  $('btnAllCsv').disabled = false; $('btnAllMd').disabled = false;
+  try { SCOPE[kind] = await inv('stage_stats', { kind }); renderHomeStats(); } catch (e) {}
+  setBatch((batchStop ? '已停止：' : '同步完成：') + ok + ' 个，' + songs + ' 首' +
+    (fail ? '，失败 ' + fail + ' 个' : '') + '（' + Math.round((Date.now() - t0) / 1000) + 's）', 100);
+  setJob(false, batchStop ? '已停止' : '同步完成', fail ? 'err' : 'ok');
 }
-$('btnAllCsv').onclick = () => exportAll('csv');
-$('btnAllMd').onclick = () => exportAll('md');
+
+async function tidyScope(kind) {
+  setJob(true, '整理 · ' + KIND_NAME[kind]);
+  setBatch('正在生成文档…');
+  try {
+    const r = await inv('tidy', { kind });
+    setBatch('整理完成：' + r.items + ' 个，' + r.files + ' 个文件，' + r.songs + ' 首 → ' + (r.sub || '导出目录'));
+    setJob(false, '整理完成', r.failed ? 'err' : 'ok');
+  } catch (e) { setBatch('整理失败：' + e); setJob(false, '整理失败', 'err'); }
+}
+
+async function checkScope(kind) {
+  setJob(true, '核验 · ' + KIND_NAME[kind]);
+  setBatch('正在核验…');
+  try {
+    const r = await inv('check_exports', { kind });
+    const bad = (r.items || []).filter(x => !x.ok).slice(0, 3)
+      .map(x => x.name + '（' + (x.issues || []).join('、') + '）').join('；');
+    setBatch((r.okCount ? '核验通过 ' + r.okCount + ' 项' : '暂无可核验的数据') +
+      (r.badCount ? '；问题 ' + r.badCount + ' 项：' + bad : '') + '，曲目合计 ' + r.songs);
+    setJob(false, '核验完成', r.badCount ? 'err' : 'ok');
+  } catch (e) { setBatch('核验失败：' + e); setJob(false, '核验失败', 'err'); }
+}
+
+$('btnSyncPl').onclick = () => syncScope('pl');
+$('btnTidyPl').onclick = () => tidyScope('pl');
+$('btnCheckPl').onclick = () => checkScope('pl');
+$('btnSyncFav').onclick = () => syncScope('plfav');
+$('btnTidyFav').onclick = () => tidyScope('plfav');
+$('btnCheckFav').onclick = () => checkScope('plfav');
+$('btnSyncAl').onclick = () => syncScope('al');
+$('btnTidyAl').onclick = () => tidyScope('al');
+$('btnCheckAl').onclick = () => checkScope('al');
+$('btnReloadAll').onclick = async () => { await loadPlaylists(); await loadAlbums(); };
 
 $('btnZip').onclick = async () => {
   $('zipState').textContent = '打包中…';
@@ -649,8 +707,6 @@ async function exportAlbums() {
   } catch (e) { $('zipState').textContent = '导出失败：' + e; }
 }
 
-$('btnLoadAlbums').onclick = loadAlbums;
-$('btnAlbumCsv').onclick = exportAlbums;
 $('btnAlbumCsv2').onclick = exportAlbums;
 $('btnReloadAlbums').onclick = loadAlbums;
 $('btnAlbumZipHint').onclick = () => { $('zipState').textContent = '导出专辑曲目：先点开某张专辑，再用「导出 CSV / MD」'; showView('home'); };
@@ -758,6 +814,9 @@ $('btnRelogin').onclick = () => { $('loginCard').hidden = false; showView('home'
   applyTheme(t);
   renderSpecial();
   renderHomeStats();
+  ['pl', 'plfav', 'al'].forEach(k => inv('stage_stats', { kind: k })
+    .then(s => { if (s && s.lists) { SCOPE[k] = s; renderHomeStats(); } })
+    .catch(() => {}));
   checkAccount(true);
 })();
 </script>
