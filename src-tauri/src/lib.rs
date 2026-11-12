@@ -452,8 +452,8 @@ async fn save_text(app: tauri::AppHandle, name: String, content: String) -> Resu
     let mut saved: Vec<String> = Vec::new();
     if let Ok(dir) = app.path().app_data_dir() {
         let out = dir.join("exports");
-        let _ = fs::create_dir_all(&out);
         let p = out.join(&file);
+        if let Some(parent) = p.parent() { let _ = fs::create_dir_all(parent); }
         if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); }
     }
     let base = read_export_dir(&app);
@@ -866,14 +866,15 @@ fn write_both(app: &tauri::AppHandle, name: &str, content: &str) -> (Vec<String>
     let mut saved: Vec<String> = Vec::new();
     if let Ok(dir) = app.path().app_data_dir() {
         let out = dir.join("exports");
-        let _ = fs::create_dir_all(&out);
         let p = out.join(&file);
+        if let Some(parent) = p.parent() { let _ = fs::create_dir_all(parent); }
         if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); }
     }
     let base = read_export_dir(app);
     let dir = Path::new(&base);
     if dir_writable(dir).is_ok() {
         let p = dir.join(&file);
+        if let Some(parent) = p.parent() { let _ = fs::create_dir_all(parent); }
         if fs::write(&p, content.as_bytes()).is_ok() { saved.push(p.to_string_lossy().to_string()); }
     }
     (saved, ())
@@ -1084,8 +1085,8 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
         let (csv_paths, _) = write_both(app, &format!("{}/{}.csv", sub, name), &to_csv(&d));
         let (md_paths, _) = write_both(app, &format!("{}/{}.md", sub, name), &to_md(&d));
         if csv_paths.is_empty() || md_paths.is_empty() { failed += 1; continue; }
-        public_files += csv_paths.iter().filter(|p| p.contains("Download")).count();
-        public_files += md_paths.iter().filter(|p| p.contains("Download")).count();
+        public_files += csv_paths.iter().filter(|p| !p.contains("/exports/")).count();
+        public_files += md_paths.iter().filter(|p| !p.contains("/exports/")).count();
         files += 2;
         items += 1;
         let count = d["count"].as_i64().unwrap_or(0);
@@ -1107,7 +1108,7 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
             sub, items, songs, now_human(), index_rows.join("\n")
         );
         let (p, _) = write_both(app, &format!("{}/00_索引.md", sub), &idx);
-        public_files += p.iter().filter(|x| x.contains("Download")).count();
+        public_files += p.iter().filter(|x| !x.contains("/exports/")).count();
         if !p.is_empty() { files += 1; }
     }
 
@@ -1116,7 +1117,7 @@ async fn do_tidy(app: &tauri::AppHandle, kind: &str) -> Result<Value, String> {
         unique = all_rows.len() as i64;
         let d = serde_json::json!({ "name": "全部曲目", "id": 0, "count": unique, "rows": all_rows });
         let (p, _) = write_both(app, "表格/all_songs.csv", &to_csv(&d));
-        public_files += p.iter().filter(|x| x.contains("Download")).count();
+        public_files += p.iter().filter(|x| !x.contains("/exports/")).count();
         if !p.is_empty() { files += 1; }
     }
 
