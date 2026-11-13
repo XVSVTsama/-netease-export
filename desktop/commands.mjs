@@ -183,12 +183,24 @@ export function createCommands(ctx) {
       if (!a.logged) throw new Error('Cookie 无效或已过期');
       return { ok: true, uid: a.uid, nickname: a.nickname };
     },
-    qr_new: async () => { throw new Error('桌面版暂不支持扫码，请用 Cookie 登录'); },
-    qr_poll: async () => ({ code: 0, message: '桌面版暂不支持扫码' }),
-    sms_sent: async () => { throw new Error('桌面版暂不支持短信登录'); },
-    login_phone_password: async () => { throw new Error('桌面版暂不支持手机登录'); },
-    login_phone_captcha: async () => { throw new Error('桌面版暂不支持短信登录'); },
-    login_email: async () => { throw new Error('桌面版暂不支持邮箱登录'); },
+    qr_new: async () => api.qrNew(),
+    qr_poll: async ({ key }) => api.qrPoll(key),
+    sms_sent: async ({ phone }) => ({ ok: await api.smsSent(phone) }),
+    login_phone_password: async ({ phone, password }) => {
+      const a = await api.loginPhone(phone, password);
+      if (!a.logged) throw new Error('登录未成功，请检查账号密码');
+      return { ok: true, uid: a.uid, nickname: a.nickname };
+    },
+    login_phone_captcha: async ({ phone, captcha }) => {
+      const a = await api.loginSms(phone, captcha);
+      if (!a.logged) throw new Error('登录未成功，请检查验证码');
+      return { ok: true, uid: a.uid, nickname: a.nickname };
+    },
+    login_email: async ({ email, password }) => {
+      const a = await api.loginEmail(email, password);
+      if (!a.logged) throw new Error('登录未成功，请检查账号密码');
+      return { ok: true, uid: a.uid, nickname: a.nickname };
+    },
 
     playlists: async ({ uid }) => {
       let u = uid;

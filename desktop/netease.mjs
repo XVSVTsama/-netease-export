@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import QRCode from 'qrcode';
 
 const IV = '0102030405060708';
 const PRESET = '0CoJUm6Qyw8W8jud';
@@ -77,6 +78,19 @@ export class Netease {
   }
   get logged() { return this.cookies.has('MUSIC_U'); }
 
+  // 登录接口靠 Set-Cookie 下发 MUSIC_U，必须收下来
+  absorb(res) {
+    const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
+    if (!list.length) return;
+    for (const raw of list) {
+      const kv = raw.split(';')[0];
+      const idx = kv.indexOf('=');
+      if (idx <= 0) continue;
+      this.cookies.set(kv.slice(0, idx).trim(), kv.slice(idx + 1).trim());
+    }
+    this.saveCookie();
+  }
+
   async weapi(pathname, body = {}, ua = UA_WEB) {
     const ck = this.cookieHeader();
     const res = await fetch(BASE + pathname, {
@@ -90,6 +104,7 @@ export class Netease {
       body: weapiBody(body),
       signal: AbortSignal.timeout(15000),
     });
+    this.absorb(res);
     const j = await res.json().catch(() => null);
     if (!j) throw new Error(`HTTP ${res.status} 解析失败`);
     return j;
@@ -107,9 +122,43 @@ export class Netease {
       }),
       signal: AbortSignal.timeout(25000),
     });
+    this.absorb(res);
     const j = await res.json().catch(() => null);
     if (!j) throw new Error(`HTTP ${res.status} 解析失败`);
     return j;
+  }
+
+  // 扫码登录：eapi 生成的二维码 App 才认
+  async qrNew() {
+    const r = await this.eapi('/login/qrcode/unikey', { type: 1 });
+    if (r.code !== 200 || !r.unikey) throw new Error(r.message || '生成二维码失败');
+    const img = await QRCode.toDataURL(`https://music.163.com/login?codekey=${r.unikey}`, { width: 320, margin: 1 });
+    return { key: r.unikey, img };
+  }
+  async qrPoll(key) {
+    const r = await this.eapi('/login/qrcode/client/login', { key, type: 1 });
+    return { code: r.code, message: r.message || '' };
+  }
+  async smsSent(phone) {
+    const r = await this.eapi('/sms/captcha/sent', { phone, ctcode: '86' });
+    if (r.code !== 200) throw new Error(r.message || `发送失败 ${r.code}`);
+    return true;
+  }
+  async loginPhone(phone, password) {
+    const r = await this.eapi('/login/cellphone', { phone, password, countrycode: '86', rememberLogin: true });
+    if (r.code !== 200) throw new Error(r.message || `登录失败 ${r.code}`);
+    return this.account();
+  }
+  async loginSms(phone, captcha) {
+    const r = await this.eapi('/login/cellphone', { phone, captcha, countrycode: '86', rememberLogin: true });
+    if (r.code !== 200) throw new Error(r.message || `登录失败 ${r.code}`);
+    return this.account();
+  }
+  async loginEmail(email, password) {
+    const md5 = crypto.createHash('md5').update(String(password)).digest('hex');
+    const r = await this.weapi('/weapi/login', { username: email, password: md5, rememberLogin: true });
+    if (r.code !== 200) throw new Error(r.message || `登录失败 ${r.code}`);
+    return this.account();
   }
 
   // 账号信息
