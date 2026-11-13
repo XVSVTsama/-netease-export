@@ -3,7 +3,7 @@
  * 便携优先：程序所在目录即数据目录，拷走整个文件夹即可换机使用；
  * 目录只读（如放进 Program Files）时自动退回系统用户数据目录。
  */
-const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -96,17 +96,42 @@ async function createWindow() {
     minWidth: 980,
     minHeight: 640,
     title: `网易云导出 ${pkg.version || ''}`.trim(),
-    backgroundColor: '#ffffff',
+    backgroundColor: '#1c1c1e',
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, nodeIntegration: false },
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      preload: path.join(CODE, 'desktop', 'preload.cjs'),
+    },
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
-  await waitServer();
-  win.loadURL(`http://127.0.0.1:${port}`);
+  await win.loadFile(path.join(CODE, 'ui', 'index.html'));
   return win;
+}
+
+let cmds = null;
+
+async function initCommands() {
+  const { Netease } = await import('./desktop/netease.mjs');
+  const { createCommands } = await import('./desktop/commands.mjs');
+  let settings = {};
+  try { settings = JSON.parse(fs.readFileSync(path.join(workDir, 'settings.json'), 'utf8')); } catch {}
+  const state = {
+    dataDir: workDir,
+    version: pkg.version || '',
+    defaultExportDir: path.join(workDir, '导出'),
+    exportDir: settings.exportDir || path.join(workDir, '导出'),
+  };
+  cmds = createCommands({ api: new Netease(workDir), app: state, dialog });
+  ipcMain.handle('eta:invoke', async (_e, cmd, args) => {
+    const fn = cmds[cmd];
+    if (!fn) throw new Error(`桌面版还没实现命令：${cmd}`);
+    return await fn(args || {});
+  });
 }
 
 function buildMenu() {
@@ -159,7 +184,7 @@ if (!app.requestSingleInstanceLock()) {
       try { fs.copyFileSync(path.join(CODE, 'accounts.example.json'), accFile); } catch {}
     }
     port = await pickPort();
-    startServer();
+    await initCommands();
     buildMenu();
     try {
       await createWindow();
