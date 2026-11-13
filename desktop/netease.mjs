@@ -10,6 +10,7 @@ const PUBKEY = '010001';
 const MODULUS = '00e0b509f6259df8642dbc35662901477df22677ec152b5ff68ace615bb7b725152b3ab17a876aea8a5aa76d2e417629ec4ee341f56135fccf695280104e0312ecbda92557c93870114af6c9d05c4f7f0c3685b7a46bee255932575cce10b424d813cfe4875d3e82047b97ddef52741d546b8e289dc6935b3ece0462db0a22b8e7';
 const EKEY = 'e82ckenh8dichen8';
 const UA_WEB = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const UA_MOBILE = 'Mozilla/5.0 (Linux; Android 13; PJZ110) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
 const UA_APP = 'NeteaseMusic/8.9.70.240407164325(8009070);Dalvik/2.1.0 (Linux; U; Android 13; PJZ110 Build/TP1A.220905.001)';
 const BASE = 'https://music.163.com';
 
@@ -291,21 +292,25 @@ export class Netease {
     return cache;
   }
 
+  // 三种办法各试十次，连续三次网络错误就提前换下一种（与 APK 一致）
   async albumCompany(aid) {
     const pathname = `/weapi/v1/album/${aid}`;
-    for (let i = 0; i < 10; i++) {
-      try {
-        const j = await this.weapi(pathname, {});
-        if (j.code === 200) return (j.album && j.album.company) || '';
-      } catch {}
-      await sleep(200 + i * 150);
-    }
-    for (let i = 0; i < 10; i++) {
-      try {
-        const j = await this.eapi(`/v1/album/${aid}`, { id: String(aid) });
-        if (j.code === 200) return (j.album && j.album.company) || '';
-      } catch {}
-      await sleep(200 + i * 150);
+    const routes = [
+      ['weapi/web', () => this.weapi(pathname, {}, UA_WEB)],
+      ['weapi/mobile', () => this.weapi(pathname, {}, UA_MOBILE)],
+      ['eapi', () => this.eapi(`/v1/album/${aid}`, { id: String(aid) })],
+    ];
+    for (const [, call] of routes) {
+      let netErrs = 0;
+      for (let i = 0; i < 10; i++) {
+        try {
+          const j = await call();
+          if (j && j.code === 200) return (j.album && j.album.company) || '';
+          netErrs = 0;
+        } catch { netErrs++; }
+        if (netErrs >= 3) break;
+        await sleep(200 + i * 150);
+      }
     }
     return null;
   }
